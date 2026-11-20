@@ -205,7 +205,7 @@ lvl     = gi % 6 + 1                // 1..6
 
 | # | 里程碑 | 交付物 | 测试（端口） | 状态 |
 |---|---|---|---|---|
-| **M1** | 数据层 | config.js：108 武器 + 72 护甲自动生成表、WEAPON_FX 特技表、BOOKS 表、钢锭物品；id 生成函数 + `weaponInfo(id)` 解析器 | weapons-data (8941)：id 全量生成/命名/数值公式抽验 20 项 | ⬜ |
+| **M1** | 数据层 | config.js：108 武器 + 72 护甲自动生成表、WEAPON_FX 特技表、BOOKS 表、钢锭物品；id 生成函数 + `weaponInfo(id)`/`armorInfo(id)` 解析器 + `unlockByBooks`/`booksForTierLvl` 解锁公式 | weapons-data (8941)：22/22（①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒）两连过 + 全量回归绿 | ✅ 已完成（2026-02） |
 | **M2** | 状态效果引擎 | entities.js：bleed/slow/cripple 字段 + update 处理 + 取强不叠加 + 血条颜色（流血红/致残黄） | status-fx (8942)：4 状态施加/衰减/取强/粒子 10 项 | ⬜ |
 | **M3** | 技能书系统 | 熟练度计数 + 解锁公式 + ZOMBIE_LOOT 掉书 + 右键研读 + K 面板 + 存档字段 | book-system (8943)：公式边界（0/2/3/15/17/18/51 本）、掉落、研读、面板、存档 12 项 | ⬜ |
 | **M4** | 近战特技 | combat.js tryMelee 重构：headshot 判定 + 刀流血断头 + 锤扇形 AOE 震慑 + 棍击飞爆头 + 枪致残直线穿透 | melee-fx (8944)：四类各 4–5 项（含概率统计抽样） | ⬜ |

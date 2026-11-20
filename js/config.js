@@ -432,3 +432,125 @@ export const ANIMAL_CFG = {
   hp: 20, xp: 12, drop: 'raw_meat',
   drop2: 'leather', drop2Chance: 0.7,   // 猪额外掉落皮革（用于装备制作）
 };
+
+// ============================================================
+// 武器/护甲 v2 —— 品级系统（108 武器 + 72 护甲 + 技能书 + 钢锭）
+// 设计文档：docs/WEAPONS-DESIGN.md（M1 数据层）
+// ============================================================
+
+// ---------- 武器材质三档（独立于工具 wood 档，旧存档安全） ----------
+export const W_TIER = {
+  stone: { name: '石', color: 0x9a9a92, css: '#9a9a92', mul: 1.0 },
+  iron:  { name: '铁', color: 0xc8cdd6, css: '#c8cdd6', mul: 1.6 },
+  steel: { name: '钢', color: 0x7e8fa0, css: '#7e8fa0', mul: 2.5 },
+};
+export const W_TIER_ORDER = ['stone', 'iron', 'steel'];
+
+// ---------- 六类武器基准（damage=base×mul×(1+(lv-1)×0.08)；rate 每级 -rateStep，下限 0.3） ----------
+export const W_CLASSES = [
+  { key: 'knife',    cn: '刀', icon: '刀', group: 'melee',  dmg: 12, rate: 0.50, rateStep: 0.028, knock: 0.8, reach: 2.6 },
+  { key: 'hammer',   cn: '锤', icon: '锤', group: 'melee',  dmg: 18, rate: 1.25, rateStep: 0.046, knock: 2.4, reach: 2.8 },
+  { key: 'club',     cn: '棍', icon: '棍', group: 'melee',  dmg: 9,  rate: 0.85, rateStep: 0.038, knock: 1.6, reach: 2.8 },
+  { key: 'spear',    cn: '枪', icon: '枪', group: 'melee',  dmg: 14, rate: 0.90, rateStep: 0.036, knock: 1.0, reach: 3.6 },
+  { key: 'bow',      cn: '弓', icon: '弓', group: 'ranged', dmg: 13, rate: 1.10, rateStep: 0.096, ammo: 'arrow' },
+  { key: 'crossbow', cn: '弩', icon: '弩', group: 'ranged', dmg: 24, rate: 1.90, rateStep: 0.100, ammo: 'bolt' },
+];
+
+// ---------- 特技参数表（M4/M5 接线用；p/数值均为 lv 的函数） ----------
+export const HEADSHOT_MUL = 1.5;   // 头部命中通用增伤
+export const WEAPON_FX = {
+  knife:    { bleed: { dps: lv => 2 + 0.4 * lv, dur: 4 }, behead: { p: lv => 0.08 + 0.02 * lv } },
+  hammer:   { aoe: { arc: Math.PI / 3, radius: lv => 3.5 + 0.1 * lv, mul: 0.6 },
+              stun: { p: lv => 0.25 + 0.02 * lv, dur: 2 } },
+  club:     { launch: { vy: 3.5 }, headshot: { p: lv => 0.15 + 0.02 * lv, mul: 3 } },
+  spear:    { cripple: { p: lv => 0.30 + 0.03 * lv, dur: 4 },
+              pierce: { arc: 8 * Math.PI / 180, range: lv => 3.6 + 0.1 * lv, mul: 0.7, max: lv => 3 + Math.floor(lv / 2) } },
+  bow:      { stealth: 12, bleed: { dps: lv => 1.5 + 0.3 * lv, dur: 3 } },
+  crossbow: { bleed: { dps: lv => 3 + 0.5 * lv, dur: 5 } },
+};
+
+// ---------- 技能书与解锁公式 ----------
+// 累计本数 n：gi=floor(n/3) → tierIdx=floor(gi/6)、lvl=gi%6+1；0 本=石1 免费；满级 51 本
+export const BOOKS = {
+  knife:    { item: 'book_knife',    cn: '刀谱' },  hammer: { item: 'book_hammer',  cn: '锤谱' },
+  club:     { item: 'book_club',     cn: '棍谱' },  spear:  { item: 'book_spear',   cn: '枪谱' },
+  bow:      { item: 'book_bow',      cn: '弓谱' },  crossbow: { item: 'book_crossbow', cn: '弩谱' },
+};
+export function unlockByBooks(count) {
+  const gi = Math.min(17, Math.floor(Math.max(0, count) / 3));   // 钳到 17（钢6 满级），超量不越界
+  const tierIdx = Math.min(2, Math.floor(gi / 6));
+  return { tier: W_TIER_ORDER[tierIdx], tierIdx, lvl: gi % 6 + 1, gi, maxed: count >= 51 };
+}
+export function booksForTierLvl(tier, lvl) {   // 解锁某材质某级所需累计本数（非法入参 Infinity）
+  const ti = W_TIER_ORDER.indexOf(tier);
+  return (ti < 0 || ti > 2 || lvl < 1 || lvl > 6) ? Infinity : (ti * 6 + lvl - 1) * 3;
+}
+
+// ---------- 解析器（M4/M5 战斗接线用） ----------
+const W_ID_RE = /^(stone|iron|steel)_(knife|hammer|club|spear|bow|crossbow)_l([1-6])$/;
+const A_ID_RE = /^(stone|iron|steel)_armor_(helm|chest|legs|boots)_l([1-6])$/;
+export function weaponInfo(id) {
+  const m = W_ID_RE.exec(id); if (!m) return null;
+  const cls = W_CLASSES.find(c => c.key === m[2]);
+  return { ...ITEMS[id], mat: m[1], cls: m[2], lv: +m[3], group: cls.group, fx: WEAPON_FX[m[2]], clsDef: cls };
+}
+export function armorInfo(id) {
+  const m = A_ID_RE.exec(id); if (!m) return null;
+  return { ...ITEMS[id], mat: m[1], armorSlot: m[2], lv: +m[3] };
+}
+
+// ---------- 护甲部位基准（减伤：受伤乘子 = A/(A+ARMOR_REDUCE)） ----------
+const ARMOR_SLOTS = [
+  { key: 'helm',  slot: 'head',  cn: '头盔', icon: '盔', base: 2 },
+  { key: 'chest', slot: 'chest', cn: '胸甲', icon: '甲', base: 4 },
+  { key: 'legs',  slot: 'legs',  cn: '护腿', icon: '腿', base: 3 },
+  { key: 'boots', slot: 'boots', cn: '靴子', icon: '靴', base: 1 },
+];
+export const ARMOR_REDUCE = 30;
+
+// ---------- 自动生成 108 件武器 ----------
+for (const c of W_CLASSES) {
+  for (const mat of W_TIER_ORDER) {
+    const t = W_TIER[mat];
+    for (let lv = 1; lv <= 6; lv++) {
+      const id = `${mat}_${c.key}_l${lv}`;
+      ITEMS[id] = {
+        name: `${t.name}${lv}级${c.cn}`, icon: c.icon, color: t.color, css: t.css,
+        kind: c.group, stack: 1, tier: mat, lv, cls: c.key,
+        damage: Math.round(c.dmg * t.mul * (1 + (lv - 1) * 0.08) * 10) / 10,
+        rate: Math.max(0.3, Math.round((c.rate - (lv - 1) * c.rateStep) * 100) / 100),
+        knock: c.knock, reach: c.reach,
+        ...(c.ammo ? { ammo: c.ammo } : {}),
+        desc: `${c.group === 'melee' ? '近战' : '远程'}·${t.name}质 ${lv} 级${c.cn}`,
+      };
+    }
+  }
+}
+
+// ---------- 自动生成 72 件护甲 ----------
+for (const s of ARMOR_SLOTS) {
+  for (const mat of W_TIER_ORDER) {
+    const t = W_TIER[mat];
+    for (let lv = 1; lv <= 6; lv++) {
+      const armor = Math.round(s.base * t.mul * (1 + (lv - 1) * 0.10) * 10) / 10;
+      ITEMS[`${mat}_armor_${s.key}_l${lv}`] = {
+        name: `${t.name}${lv}级${s.cn}`, icon: s.icon, color: t.color, css: t.css,
+        kind: 'armor', stack: 1, tier: mat, lv,
+        armor, equip: s.slot,
+        desc: `${s.cn}·护甲值 ${armor}（受伤乘子 ${(armor / (armor + ARMOR_REDUCE) * 100).toFixed(0)}%）`,
+      };
+    }
+  }
+}
+
+// ---------- 技能书物品 + 钢锭 ----------
+for (const [cls, b] of Object.entries(BOOKS)) {
+  ITEMS[b.item] = {
+    name: b.cn, icon: '书', color: 0xd9c27a, css: '#d9c27a', kind: 'book', stack: 99,
+    desc: `研读提升${cls === 'crossbow' ? '弩' : cls} 类武器熟练度（打怪掉落）`,
+  };
+}
+ITEMS.steel_ingot = {
+  name: '钢锭', icon: '钢', color: 0x7e8fa0, css: '#7e8fa0', kind: 'material', stack: 64,
+  desc: '钢制武器/护甲原料（熔炉：铁锭×2 + 煤）',
+};
