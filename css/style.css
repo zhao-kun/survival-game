@@ -1,0 +1,276 @@
+/* ================= 全局 ================= */
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; color: #eee; }
+#game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hidden { display: none !important; }
+
+/* ================= HUD 通用 ================= */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+/* 左上状态条 */
+#vitals { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: flex; align-items: center; gap: 6px; }
+.bar-icon { font-size: 16px; width: 20px; text-align: center; filter: drop-shadow(0 1px 2px #000); }
+.bar { position: relative; width: 200px; height: 16px; background: rgba(0,0,0,.55); border: 2px solid #222; border-radius: 3px; box-shadow: 0 0 4px rgba(0,0,0,.6); }
+.bar-fill { height: 100%; border-radius: 1px; transition: width .18s ease; }
+.bar-fill.hp     { background: linear-gradient(#ff6b57, #d0342c); }
+.bar-fill.hunger { background: linear-gradient(#ffb75e, #ed8f03); }
+.bar-fill.thirst { background: linear-gradient(#6fc3ff, #1e7ad1); }
+.bar-fill.low { animation: blink .6s infinite alternate; }
+@keyframes blink { from { filter: brightness(1); } to { filter: brightness(1.7); } }
+.bar-text { position: absolute; inset: 0; font-size: 11px; line-height: 13px; text-align: center; text-shadow: 1px 1px 0 #000; }
+
+/* 右上时间 */
+#time-indicator { position: absolute; top: 14px; right: 14px; padding: 6px 12px; background: rgba(0,0,0,.5); border: 2px solid #222; border-radius: 4px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
+#btn-mute { position: absolute; top: 14px; right: 190px; width: 36px; height: 32px; background: rgba(0,0,0,.5); border: 2px solid #222; border-radius: 4px; color: #fff; font-size: 15px; cursor: pointer; text-shadow: 1px 1px 0 #000; }
+#btn-mute:hover { border-color: #6a8fd8; background: rgba(40,60,110,.6); }
+
+/* 准星 */
+#crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%,-50%); }
+#crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,.85); box-shadow: 0 0 2px #000; }
+#crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+#crosshair::after  { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+
+/* 挖掘进度 */
+#mine-progress { position: absolute; left: 50%; top: calc(50% + 26px); transform: translateX(-50%); width: 120px; text-align: center; }
+#mine-bar { height: 8px; background: rgba(0,0,0,.55); border: 1px solid #000; border-radius: 4px; overflow: hidden; }
+#mine-bar { position: relative; }
+#mine-bar::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: linear-gradient(#ffe08a, #d8a013); }
+#mine-tip { margin-top: 4px; font-size: 12px; color: #ffd; text-shadow: 1px 1px 0 #000; }
+
+/* 制作进度条（准星下方，比挖掘进度低一点避免重叠） */
+#craft-bar { position: absolute; left: 50%; top: calc(50% + 88px); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  background: rgba(10,10,14,.72); border: 1px solid #444; border-radius: 6px; }
+#craft-bar.hidden { display: none; }
+#craft-icon { font-size: 18px; }
+#craft-label { font-size: 13px; color: #ffe9b0; text-shadow: 1px 1px 0 #000; white-space: nowrap; }
+#craft-track { width: 130px; height: 8px; background: rgba(0,0,0,.6); border: 1px solid #000; border-radius: 4px; overflow: hidden; }
+#craft-fill { height: 100%; width: 0%; background: linear-gradient(#ffb35c, #e07a12); transition: width .15s linear; }
+#craft-remain { font-size: 12px; color: #ffd; min-width: 34px; text-align: right; text-shadow: 1px 1px 0 #000; }
+#craft-remain.paused { color: #ff9d7a; }
+
+/* 底部经验 + 快捷栏 */
+#bottom-hud { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#xp-wrap { position: relative; width: 380px; height: 10px; background: rgba(0,0,0,.55); border: 1px solid #222; border-radius: 5px; overflow: hidden; }
+#xp-bar { height: 100%; width: 0%; background: linear-gradient(#b7ff5e, #58c402); transition: width .2s; }
+#xp-text { position: absolute; inset: -2px 0; text-align: center; font-size: 11px; line-height: 12px; text-shadow: 1px 1px 0 #000; }
+#xp-text.has-points::after { content: " ●可加点"; color: #ffd54a; }
+
+#hotbar { display: flex; gap: 4px; pointer-events: auto; }
+.slot { width: 52px; height: 52px; background: rgba(20,20,20,.72); border: 2px solid #3a3a3a; border-radius: 4px; position: relative;
+        display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; }
+.slot.selected { border-color: #ffd54a; box-shadow: 0 0 8px rgba(255,213,74,.5); }
+.slot .count { position: absolute; right: 3px; bottom: 1px; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #000; }
+.slot .key { position: absolute; left: 3px; top: 1px; font-size: 10px; color: #aaa; text-shadow: 1px 1px 0 #000; }
+.slot .chip { width: 34px; height: 34px; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+              font-size: 15px; font-weight: bold; color: #111; border: 1px solid rgba(0,0,0,.5); text-shadow: none; }
+
+/* 提示消息 */
+#toasts { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.toast { padding: 4px 14px; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.18); border-radius: 14px;
+         font-size: 13px; text-shadow: 1px 1px 0 #000; animation: toast-in .18s ease, toast-out .4s ease 2s forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-10px); } }
+
+/* 受伤 / 僵尸警告 */
+#damage-vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(180,0,0,.55) 100%); }
+#zombie-warning { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 70%, rgba(120,0,0,.5) 100%); }
+
+/* ================= 准星目标怪物血量 ================= */
+#mob-hud { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); text-align: center; pointer-events: none; z-index: 50; }
+#mob-hud-name { font-size: 14px; font-weight: bold; color: #ffb0a8; text-shadow: 0 1px 3px #000; margin-bottom: 3px; }
+#mob-hud-bar { width: 180px; height: 10px; background: rgba(0,0,0,.55); border: 1px solid #777; border-radius: 5px; overflow: hidden; }
+#mob-hud-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff6a5e, #ff3b30); transition: width .12s; }
+#mob-hud-text { font-size: 11px; color: #ddd; margin-top: 2px; text-shadow: 0 1px 2px #000; }
+
+/* ================= 面板 ================= */
+.panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: rgba(18,20,24,.94);
+         border: 2px solid #555; border-radius: 8px; padding: 14px; pointer-events: auto; max-height: 86vh; overflow: auto;
+         box-shadow: 0 8px 40px rgba(0,0,0,.7); }
+.panel-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #ffd54a; }
+.panel-hint { font-size: 12px; color: #999; font-weight: normal; margin-left: 8px; }
+#fx-row { position: fixed; left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 5px; align-items: flex-start; z-index: 60; pointer-events: none; }
+#fx-row .fx-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; margin-top: 4px;
+  background: rgba(24, 18, 14, .85);
+  border: 1px solid #9ccc65; border-radius: 12px;
+  font-size: 13px; width: fit-content;
+}
+#fx-row .fx-chip b { color: #ffd54a; }
+
+#panel-inventory, #panel-backpack { width: min(1080px, 96vw); }
+.panel-body { display: flex; gap: 14px; }
+.panel-left { flex: 0 0 auto; }
+.panel-right { flex: 1 1 auto; max-height: 60vh; overflow-y: auto; }
+
+#inv-grid, #pack-grid, #bar2-grid { display: grid; grid-template-columns: repeat(9, 52px); gap: 4px; }
+#inv-grid .slot .key, #pack-grid .slot .key, #bar2-grid .slot .key { display: none; }
+#inv-grid .slot.pending, #pack-grid .slot.pending, #bar2-grid .slot.pending { border-color: #ffd54a; box-shadow: 0 0 10px rgba(255,213,74,.7); }
+
+/* ---- 装备栏 ---- */
+.panel-equip { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.equip-title { font-size: 13px; color: #aaa; letter-spacing: 2px; }
+#equip-grid { display: flex; flex-direction: column; gap: 5px; }
+.equip-slot { width: 96px; padding: 6px 5px; background: rgba(20,20,20,.72); border: 2px solid #3a3a3a;
+              border-radius: 6px; cursor: pointer; text-align: center; transition: border-color .15s; }
+.equip-slot:hover { border-color: #6a6a6a; }
+.equip-slot.empty .e-icon { opacity: .3; }
+.equip-slot .e-label { font-size: 10px; color: #8fa; opacity: .8; }
+.equip-slot .e-icon { font-size: 22px; line-height: 1.4; }
+.equip-slot .e-icon .chip { width: 30px; height: 30px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; }
+.equip-slot .e-name { font-size: 11px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.equip-slot .e-stat { font-size: 10px; color: #ffd54a; }
+.sockets { display: flex; gap: 3px; justify-content: center; margin-top: 4px; }
+.socket { width: 20px; height: 20px; border: 1px dashed #666; border-radius: 3px; display: flex;
+          align-items: center; justify-content: center; font-size: 11px; cursor: pointer; }
+.socket:hover { border-color: #ffd54a; }
+.socket.filled { border-style: solid; border-color: #9dff6c; background: rgba(157,255,108,.12); }
+.socket.filled .chip { width: 15px; height: 15px; font-size: 9px; border-radius: 2px; display: flex; align-items: center; justify-content: center; }
+#equip-stats { font-size: 12px; color: #bbb; max-width: 110px; line-height: 1.5; }
+#equip-stats b { color: #ffd54a; }
+#equip-stats .pend { color: #ffd54a; }
+#equip-stats .dim2 { color: #777; font-size: 11px; }
+.moddot { position: absolute; left: 3px; bottom: 1px; font-size: 10px; color: #9dff6c; text-shadow: 0 0 4px #9dff6c; }
+
+#craft-list { display: flex; flex-direction: column; gap: 6px; }
+.recipe { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: rgba(255,255,255,.04);
+          border: 1px solid #333; border-radius: 6px; }
+.recipe .r-icon { width: 34px; height: 34px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.recipe .r-icon .chip { width: 28px; height: 28px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: #111; }
+.recipe .r-main { flex: 1; }
+.recipe .r-name { font-size: 14px; }
+.recipe .r-need { font-size: 11px; color: #aaa; margin-top: 2px; }
+.recipe .r-need .lack { color: #ff7b6b; }
+.recipe .r-need .station { color: #ffd54a; margin-right: 6px; }
+.recipe button { padding: 5px 12px; background: #3d7d2e; color: #fff; border: 1px solid #274d1e; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.recipe button:disabled { background: #444; border-color: #333; color: #888; cursor: not-allowed; }
+.recipe button:hover:not(:disabled) { background: #4d9a3a; }
+
+/* 技能面板 */
+#panel-skills { width: min(920px, 94vw); }
+#skills-columns { display: flex; gap: 10px; }
+.skill-cat { flex: 1; background: rgba(255,255,255,.04); border: 1px solid #333; border-radius: 8px; padding: 10px; }
+.skill-cat h3 { font-size: 15px; margin-bottom: 8px; }
+.skill-node { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 6px; background: rgba(0,0,0,.25); margin-bottom: 6px; }
+.skill-node .s-info { flex: 1; }
+.skill-node .s-name { font-size: 13px; }
+.skill-node .s-desc { font-size: 11px; color: #9ab; }
+.skill-node .pips { display: flex; gap: 2px; margin-top: 3px; }
+.skill-node .pip { width: 14px; height: 6px; background: #333; border-radius: 3px; }
+.skill-node .pip.on { background: #ffd54a; }
+.skill-node button { width: 26px; height: 26px; background: #2b5d8c; color: #fff; border: 1px solid #1c3d5c; border-radius: 4px; cursor: pointer; font-size: 15px; }
+.skill-node button:disabled { background: #444; color: #777; cursor: not-allowed; }
+.skill-node.maxed button { background: #3d7d2e; }
+
+/* 帮助面板 */
+#panel-help { width: min(640px, 94vw); }
+#help-content { font-size: 13px; line-height: 1.9; color: #cde; }
+#help-content b { color: #ffd54a; }
+#help-content h4 { color: #ffd54a; margin: 8px 0 2px; }
+
+/* ================= 开始 / 死亡 ================= */
+#start-screen, #death-screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(8,10,14,.82); text-align: center; }
+#start-screen h1, #death-screen h1 { font-size: 44px; text-shadow: 0 3px 0 #000, 0 0 30px rgba(255,213,74,.35); margin-bottom: 8px; }
+#death-screen h1 { color: #ff5b4a; }
+.subtitle { color: #ffd54a; margin-bottom: 22px; letter-spacing: 4px; }
+.start-controls { font-size: 14px; line-height: 2.1; color: #cde; background: rgba(0,0,0,.4); padding: 12px 24px; border-radius: 8px; margin-bottom: 14px; }
+.start-controls b { color: #ffd54a; }
+.start-tips { font-size: 13px; color: #9ab; max-width: 560px; margin-bottom: 24px; }
+#start-screen button, #death-screen button { padding: 12px 44px; font-size: 18px; background: #3d7d2e; color: #fff;
+  border: 2px solid #274d1e; border-radius: 6px; cursor: pointer; letter-spacing: 4px; }
+#start-screen button:hover, #death-screen button:hover { background: #4d9a3a; }
+
+/* 用户 ID 输入与历史存档 */
+#profile-box { margin: 14px auto 0; width: min(420px, 86vw); text-align: left; }
+#profile-box label { display: block; font-size: 13px; color: #cfe3ff; margin-bottom: 6px; text-shadow: 1px 1px 0 #000; }
+#user-id-input { width: 100%; box-sizing: border-box; padding: 9px 12px; font-size: 15px; color: #fff;
+  background: rgba(10,14,22,.82); border: 2px solid #4a5a74; border-radius: 6px; outline: none; }
+#user-id-input:focus { border-color: #7ec8ff; }
+#saved-list { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+#saved-list .saved-user { padding: 5px 10px; font-size: 13px; color: #cfe3ff; cursor: pointer;
+  background: rgba(20,28,44,.85); border: 1px solid #3a4a64; border-radius: 5px; }
+#saved-list .saved-user:hover { border-color: #7ec8ff; color: #fff; }
+#saved-list .saved-empty { font-size: 12px; color: #8fa3bd; }
+
+/* 篝火/熔炉容器面板 */
+#panel-station { width: min(460px, 92vw); max-height: 94vh; padding: 10px 12px; }
+#station-state { font-size: 13px; color: #ffd54a; margin-bottom: 4px; text-shadow: 1px 1px 0 #000; }
+.burn-track { height: 8px; background: rgba(0,0,0,.5); border: 1px solid #3a4a64; border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+#st-burn-fill { height: 100%; width: 0; background: linear-gradient(90deg, #ff7b1e, #ffd54a); transition: width .2s; }
+.station-slots { display: flex; gap: 14px; justify-content: center; align-items: center; margin-bottom: 6px; }
+.st-section-label { font-size: 12px; color: #9fb3cd; margin: 6px 0 6px; text-align: left; }
+/* 制作队列（4 位，点击取消） */
+#st-queue { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 6px; }
+.st-qslot { position: relative; min-height: 64px; background: rgba(10,14,22,.7); border: 2px solid #4a5a74; border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 4px; cursor: pointer; }
+.st-qslot:hover { border-color: #ff8a7a; }
+.st-qslot.empty { border-style: dashed; color: #5d7291; font-size: 11px; cursor: default; }
+.st-qslot.empty:hover { border-color: #4a5a74; }
+.st-qslot.active { border-color: #ff9d5c; box-shadow: 0 0 8px rgba(255,157,92,.35); }
+.st-qslot.paused { border-color: #ffd54a; box-shadow: 0 0 10px rgba(255,213,74,.45); animation: qPaused 1.2s ease-in-out infinite; }
+@keyframes qPaused { 0%, 100% { box-shadow: 0 0 10px rgba(255,213,74,.45); } 50% { box-shadow: 0 0 16px rgba(255,213,74,.8); } }
+.st-qslot .q-icon { font-size: 20px; line-height: 1; }
+.st-qslot .q-name { font-size: 12px; color: #e8f2ff; }
+.st-qslot .q-eta { font-size: 10px; color: #ffd54a; }
+.st-qslot .q-eta.dim { color: #8fa3bd; }
+/* 取消按钮常显（透明易漏点），加大点击区 */
+.st-qslot .q-cancel { position: absolute; top: -2px; right: 0px; font-size: 12px; line-height: 1; color: #ff8a7a;
+  opacity: .8; padding: 4px 6px; background: rgba(20,28,44,.85); border-radius: 4px; cursor: pointer; }
+.st-qslot:hover .q-cancel { opacity: 1; background: rgba(255,138,122,.22); }
+.st-qslot .st-job-track { width: 90%; }
+/* 产出暂存（6 格） */
+#st-output-grid { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(2, 44px); gap: 4px; }
+.st-ocell { position: relative; width: 44px; height: 44px; background: rgba(10,14,22,.7); border: 2px solid #4a5a74; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.st-ocell.empty { border-style: dashed; cursor: default; }
+.st-ocell:hover { border-color: #7ec8ff; }
+.st-ocell .count { position: absolute; right: 2px; bottom: 0; font-size: 11px; color: #fff; text-shadow: 1px 1px 0 #000; }
+.st-slot { position: relative; width: 64px; height: 64px; background: rgba(10,14,22,.7); border: 2px dashed #4a5a74; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 26px; cursor: pointer; }
+.st-slot:hover { border-color: #7ec8ff; }
+.st-slot.out { border-style: solid; }
+.st-slot .slot-label { position: absolute; bottom: 2px; left: 0; right: 0; font-size: 11px; color: #8fa3bd; text-align: center; }
+#st-job { margin-bottom: 8px; }
+.st-job-row { font-size: 13px; color: #cfe3ff; margin-bottom: 4px; }
+.st-job-row.dim { color: #8fa3bd; }
+.st-job-track { height: 10px; background: rgba(0,0,0,.5); border: 1px solid #3a4a64; border-radius: 5px; overflow: hidden; }
+.st-job-fill { height: 100%; background: linear-gradient(90deg, #ff9d5c, #ffd54a); }
+#st-recipes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.st-recipe { padding: 5px 10px; font-size: 13px; color: #fff; background: #3d7d2e; border: 1px solid #5a9a4a; border-radius: 5px; cursor: pointer; }
+.st-recipe.ready:hover { background: #4d9a3a; }
+.st-recipe.dim { background: #2a3444; border-color: #3a4a64; color: #8fa3bd; cursor: not-allowed; }
+.st-recipe .mats { font-size: 12px; opacity: 0.85; margin: 0 2px; }
+.st-recipe .mats i { font-style: normal; font-size: 11px; margin-right: 3px; }
+
+/* 右下角收获提示（挖方块掉落/拾取掉落物，约 5 秒） */
+#loot-feed { position: fixed; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; z-index: 60; pointer-events: none; }
+.loot-entry { display: flex; gap: 12px; padding: 7px 13px; background: rgba(18,24,34,0.85); border: 1px solid rgba(122,168,255,0.25); border-radius: 8px; font-size: 13px; color: #dfe8f2; animation: lootIn 0.22s ease; }
+.loot-entry.fade { opacity: 0; transition: opacity 0.8s; }
+.loot-item { display: inline-flex; align-items: center; gap: 5px; }
+.loot-item b { color: #ffd76a; }
+@keyframes lootIn { from { transform: translateX(24px); opacity: 0; } }
+#st-fire-btn { padding: 8px 26px; font-size: 14px; background: #7a4a1e; color: #fff; border: 1px solid #a06a2e; border-radius: 5px; cursor: pointer; }
+#st-fire-btn:hover { background: #8f5a26; }
+.station-hint { font-size: 11px; color: #8fa3bd; margin: 5px 0; line-height: 1.45; }
+#station-inv { display: grid; grid-template-columns: repeat(9, 40px); gap: 4px; max-height: 132px; overflow-y: auto; }
+.inv-title { font-size: 12px; color: #ffd9a0; margin: 6px 0 4px; }
+/* 可作燃料的物品标记（容器面板物品栏内） */
+.slot.fuel-slot { border-color: #b06a2e; }
+.slot.fuel-slot:hover { border-color: #ff9d5c; }
+.slot .fuel-mark { position: absolute; left: 2px; top: 0; font-size: 10px; line-height: 1; }
+/* 燃料槽空置提示 */
+.st-slot .slot-empty-hint { position: absolute; top: 12px; left: 0; right: 0; font-size: 11px; color: #8fa3bd; }
+/* 常驻燃烧信息行 */
+#st-fuel-info { font-size: 12px; color: #ffcf8a; margin: 3px 0; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 放入燃料成功闪烁 */
+.st-slot.flash { animation: stFlash 0.45s ease-out; }
+@keyframes stFlash {
+  0% { box-shadow: 0 0 0 4px #ffb35c, 0 0 18px #ff9d5c; }
+  100% { box-shadow: none; }
+}
+#death-reason { color: #ffb3a8; margin-bottom: 12px; }
+#death-stats { font-size: 14px; color: #cde; line-height: 2; margin-bottom: 24px; background: rgba(0,0,0,.4); padding: 10px 30px; border-radius: 8px; }

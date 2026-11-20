@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>方块求生 · 僵尸末日</title>
+<link rel="stylesheet" href="css/style.css" />
+<script type="importmap">
+  { "imports": { "three": "./lib/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- ======================= HUD ======================= -->
+<div id="hud">
+  <!-- 左上：生命 / 饥饿 / 口渴 -->
+  <div id="vitals">
+    <div class="bar-row"><span class="bar-icon">❤️</span><div class="bar"><div id="bar-hp" class="bar-fill hp"></div><span id="text-hp" class="bar-text"></span></div></div>
+    <div class="bar-row"><span class="bar-icon">🍗</span><div class="bar"><div id="bar-hunger" class="bar-fill hunger"></div></div></div>
+    <div class="bar-row"><span class="bar-icon">💧</span><div class="bar"><div id="bar-thirst" class="bar-fill thirst"></div></div></div>
+    <div id="fx-row"></div>
+  </div>
+
+  <!-- 右上：时间 + 音效开关 -->
+  <div id="time-indicator">☀️ 第 1 天 · 06:00</div>
+  <button id="btn-mute" title="音效开关（M）">🔊</button>
+
+  <!-- 中央准星与挖掘进度 -->
+  <div id="crosshair"></div>
+
+  <!-- 准星目标怪物血量 -->
+  <div id="mob-hud" class="hidden">
+    <div id="mob-hud-name">僵尸</div>
+    <div id="mob-hud-bar"><div id="mob-hud-fill"></div></div>
+    <div id="mob-hud-text">20 / 20</div>
+  </div>
+
+  <div id="mine-progress" class="hidden">
+    <div id="mine-bar"></div>
+    <div id="mine-tip"></div>
+  </div>
+
+  <!-- 制作进度条 -->
+  <div id="craft-bar" class="hidden">
+    <span id="craft-icon">🔨</span>
+    <span id="craft-label">制作中</span>
+    <div id="craft-track"><div id="craft-fill"></div></div>
+    <span id="craft-remain"></span>
+  </div>
+
+  <!-- 底部：经验条 + 快捷栏 -->
+  <div id="bottom-hud">
+    <div id="xp-wrap">
+      <div id="xp-bar"></div>
+      <div id="xp-text">Lv.1</div>
+    </div>
+    <div id="hotbar"></div>
+  </div>
+
+  <!-- 提示消息 -->
+  <div id="toasts"></div>
+  <div id="loot-feed"></div>
+
+  <!-- 受伤 / 危险效果 -->
+  <div id="damage-vignette"></div>
+  <div id="zombie-warning"></div>
+
+  <!-- 面板：物品栏 + 合成（E） -->
+  <div id="panel-inventory" class="panel hidden">
+    <div class="panel-title">物品栏 &amp; 合成 <span class="panel-hint">[E] 关闭 · 选中格子后在游戏中右键即可使用 · [B] 打开背包</span></div>
+    <div class="panel-body">
+      <div class="panel-left">
+        <div class="equip-title">物品栏（快捷使用）</div>
+        <div id="inv-grid"></div>
+      </div>
+      <div class="panel-right">
+        <div class="equip-title">合成</div>
+        <div id="craft-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 面板：背包 + 装备（B） -->
+  <div id="panel-backpack" class="panel hidden">
+    <div class="panel-title">背包 &amp; 装备 <span class="panel-hint">[B] 关闭 · 单击背包物品直接使用 · 右键背包物品移入物品栏 · 右键物品栏物品移回背包</span></div>
+    <div class="panel-body">
+      <div class="panel-equip">
+        <div class="equip-title">装备</div>
+        <div id="equip-grid"></div>
+        <div id="equip-stats"></div>
+      </div>
+      <div class="panel-left">
+        <div class="equip-title">背包</div>
+        <div id="pack-grid"></div>
+        <div class="equip-title" style="margin-top:12px">物品栏 <span style="color:#777">（右键背包物品移入此处）</span></div>
+        <div id="bar2-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 面板：技能树 -->
+  <div id="panel-skills" class="panel hidden">
+    <div class="panel-title">技能树 <span class="panel-hint">[K] 关闭 · 可用技能点：<span id="skill-points">0</span></span></div>
+    <div id="skills-columns"></div>
+  </div>
+
+  <!-- 面板：帮助 -->
+  <div id="panel-help" class="panel hidden">
+    <div class="panel-title">操作说明 <span class="panel-hint">[H] 关闭</span></div>
+    <div id="help-content"></div>
+  </div>
+
+  <!-- 篝火/熔炉容器 -->
+  <div id="panel-station" class="panel hidden">
+    <div class="panel-title"><span id="station-title">🔥 篝火</span> <span class="panel-hint">[Esc] 关闭</span></div>
+    <div id="station-state">⚫ 未点火</div>
+    <div class="burn-track"><div id="st-burn-fill"></div></div>
+    <div class="st-section-label">📋 制作队列（最多 4 个，点击任务取消并退回原料）</div>
+    <div id="st-queue"></div>
+    <div class="st-section-label">⛽ 燃料与产出暂存</div>
+    <div class="station-slots">
+      <div class="st-slot" id="st-fuel" title="点击取回燃料"></div>
+      <div id="st-output-grid" title="左键收进背包 · 右键直接使用"></div>
+    </div>
+    <div id="st-fuel-info"></div>
+    <div id="st-recipes"></div>
+    <button id="st-fire-btn">点火</button>
+    <p class="station-hint" id="station-hint">🔥 <b>放燃料</b>：点击下方物品栏中带 <b>🔥 标记</b>的物品（木板 60 秒 / 原木 120 秒 / 木棍 15 秒 / 木工具 15 秒 / 煤炭 90 秒）→ 点「点火」；<br>点配方即入队（自动扣原料），制作时可以去干其他事，做好了有提示；产出格：左键收进背包，食物/饮料右键直接吃掉/喝掉。</p>
+    <div class="inv-title">👇 随身物品栏 · 点击带 🔥 标记的物品放入燃料（每次 1 块，可叠加）</div>
+    <div id="station-inv" class="inv-grid"></div>
+  </div>
+</div>
+
+<!-- ======================= 开始界面 ======================= -->
+<div id="start-screen">
+  <h1>方块求生 · 僵尸末日</h1>
+  <p class="subtitle">采集 · 建造 · 制作 · 狩猎 · 生存</p>
+  <div class="start-controls">
+    <div><b>WASD</b> 移动　<b>空格</b> 跳跃　<b>Shift</b> 疾跑</div>
+    <div><b>鼠标左键</b> 攻击 / 采集（按住）　<b>鼠标右键</b> 放置 / 使用 / 进食</div>
+    <div><b>1-9 / 滚轮</b> 切换快捷栏　<b>E</b> 背包合成　<b>K</b> 技能树　<b>H</b> 帮助　<b>V</b> 切换第一/第三人称</div>
+  </div>
+  <p class="start-tips">提示：徒手砍树获得原木 → 合成木板、木棍与工具 → 夜晚会有僵尸出没，尽早制作武器与篝火！</p>
+  <div id="profile-box">
+    <label for="user-id-input">👤 用户 ID（按 ID 保存 / 继续进度）</label>
+    <input id="user-id-input" maxlength="20" placeholder="输入用户 ID，如：xiaoming" autocomplete="off" />
+    <div id="saved-list"></div>
+  </div>
+  <button id="btn-start">开 始 游 戏</button>
+</div>
+
+<!-- ======================= 死亡界面 ======================= -->
+<div id="death-screen" class="hidden">
+  <h1>你 死 了</h1>
+  <p id="death-reason"></p>
+  <div id="death-stats"></div>
+  <button id="btn-restart">重新开始</button>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

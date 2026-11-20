@@ -1,0 +1,9 @@
+{
+  "name": "block-survival",
+  "version": "0.1.0",
+  "description": "网页版方块生存游戏（类我的世界 + 僵尸末日）",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000"
+  }
+}
