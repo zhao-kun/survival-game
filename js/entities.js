@@ -8,6 +8,63 @@ import { randRange, randInt, clamp } from './utils.js';
 
 const Z_HALF = 0.3, Z_HEIGHT = 1.8;
 
+// ============================================================
+// M2 状态效果引擎（docs/WEAPONS-DESIGN.md 4.1）
+// bleed 流血 / slow 震慑 / cripple 致残 —— 同类取强不叠加
+// ============================================================
+function applyStatusImpl(e, type, dur, dps = 0) {
+  if (type === 'bleed') {
+    if (dps >= e.bleedDps) { e.bleedDps = dps; e.bleedT = Math.max(e.bleedT, dur); }   // 弱施加不动强流血
+  } else if (type === 'slow') e.slowT = Math.max(e.slowT, dur);
+  else if (type === 'cripple') e.crippleT = Math.max(e.crippleT, dur);
+}
+function moveMulImpl(e) { return e.slowT > 0 ? 0.5 : e.crippleT > 0 ? 0.6 : 1; }   // 取强：震慑优先
+
+// 轻量粒子（状态视觉：血滴等）——无对象池，一次性小方块
+export function spawnParticle(game, x, y, z, color = 0xd0021b, life = 0.45) {
+  if (!game.entities?.particles) return;
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(0.07, 0.07, 0.07),
+    new THREE.MeshBasicMaterial({ color, transparent: true })
+  );
+  m.position.set(x + randRange(-0.25, 0.25), y, z + randRange(-0.25, 0.25));
+  game.scene.add(m);
+  game.entities.particles.push({ mesh: m, life, max: life, vy: 1.1 });
+}
+export function updateParticles(game, dt) {
+  const arr = game.entities.particles;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const p = arr[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      game.scene.remove(p.mesh);
+      p.mesh.material.dispose();
+      p.mesh.geometry.dispose();
+      arr.splice(i, 1);
+      continue;
+    }
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.material.opacity = p.life / p.max;
+  }
+}
+
+// 状态引擎 tick：返回是否流血中（供 update 掉血/视觉用）
+function statusTick(e, g, dt, particleY) {
+  if (e.bleedT > 0) {
+    e.bleedT -= dt;
+    e.hp -= e.bleedDps * dt;
+    e.dotTick -= dt;
+    if (e.dotTick <= 0) { e.dotTick = 0.35; spawnParticle(g, e.pos.x, e.pos.y + particleY, e.pos.z); }
+  } else e.bleedDps = 0;
+  if (e.slowT > 0) e.slowT -= dt;
+  if (e.crippleT > 0) e.crippleT -= dt;
+}
+// 血条颜色：流血红 / 致残黄 / 震慑蓝 / 常态红
+const HP_BLEED = 0xd0021b, HP_CRIPPLE = 0xffd54a, HP_SLOW = 0x7ec8ff, HP_NORMAL = 0xff3b30;
+function hpBarColor(e) {
+  return e.bleedT > 0 ? HP_BLEED : e.crippleT > 0 ? HP_CRIPPLE : e.slowT > 0 ? HP_SLOW : HP_NORMAL;
+}
+
 // ------------------------------------------------------------
 // 僵尸
 // ------------------------------------------------------------
@@ -28,6 +85,7 @@ export class Zombie {
     this.wanderTimer = 0;
     this.flashT = 0;
     this.dead = false;
+    this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
 
     this.mesh = buildHumanoid({
       skin: 0x4a9a4a, shirt: 0x2a6f6f, pants: 0x3a3a6a,
@@ -48,6 +106,10 @@ export class Zombie {
     this.mesh.traverse(o => { if (o.isMesh && o.material.emissive) arr.push(o.material); });
     return arr;
   }
+
+  // M2 状态效果：同类取强不叠加
+  applyStatus(type, dur, dps = 0) { applyStatusImpl(this, type, dur, dps); }
+  moveMul() { return moveMulImpl(this); }
 
   takeDamage(dmg, knockDir) {
     if (this.dead) return;
@@ -111,8 +173,9 @@ export class Zombie {
       }
       // 进入攻击距离后停下（避免冲过头来回穿越玩家）
       const stop = dist < 1.4;
-      this.vel.x = stop ? 0 : moveX * this.cfg.speed;
-      this.vel.z = stop ? 0 : moveZ * this.cfg.speed;
+      const mm = this.moveMul();   // M2：震慑 ×0.5 / 致残 ×0.6
+      this.vel.x = stop ? 0 : moveX * this.cfg.speed * mm;
+      this.vel.z = stop ? 0 : moveZ * this.cfg.speed * mm;
       // 攻击
       if (dist < 1.8 && Math.abs(p.y - this.pos.y) < 2 && this.attackCd <= 0) {
         this.attackCd = 1.2;
@@ -145,6 +208,9 @@ export class Zombie {
     this.onGround = res.onGround;
     if (res.hitWall && this.onGround && this.aggro) this.vel.y = 7; // 撞墙跳跃
 
+    // M2 状态引擎：流血掉血+粒子 / 震慑 / 致残 计时衰减
+    statusTick(this, g, dt, 1.2);
+
     // 白天缓慢灼烧
     if (!g.isNight) this.hp -= 2.5 * dt;
     if (this.hp <= 0 && !this.dead) this.die();
@@ -176,6 +242,9 @@ export class Zombie {
     if (this.hpBar.visible) {
       this.hpBar.rotation.y = -(g.camera.rotation.y ?? 0) - this.mesh.rotation.y;
     }
+    // M2：血条颜色随状态（流血红/致残黄/震慑蓝）
+    const hc = hpBarColor(this);
+    if (this.hpBar.material.color.getHex() !== hc) this.hpBar.material.color.setHex(hc);
   }
 
   dispose() { this.game.scene.remove(this.mesh); }
@@ -198,6 +267,7 @@ export class Animal {
     this.wanderTimer = 0;
     this.wanderDir = new THREE.Vector3();
     this.dead = false;
+    this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
 
     const g = new THREE.Group();
     const mat = c => new THREE.MeshLambertMaterial({ color: c });
@@ -259,6 +329,10 @@ export class Animal {
     return false;
   }
 
+  // M2 状态效果：同类取强不叠加
+  applyStatus(type, dur, dps = 0) { applyStatusImpl(this, type, dur, dps); }
+  moveMul() { return moveMulImpl(this); }
+
   die() {
     this.dead = true;
     const g = this.game;
@@ -302,6 +376,7 @@ export class Animal {
       }
     }
     this.avoidHazards();           // 不往地图边缘/悬崖跑
+    speed *= this.moveMul();       // M2：震慑 ×0.5 / 致残 ×0.6
     this.vel.x = this.wanderDir.x * speed;
     this.vel.z = this.wanderDir.z * speed;
     this.vel.y -= GAMEPLAY.GRAVITY * dt;
@@ -309,6 +384,10 @@ export class Animal {
     this.onGround = res.onGround;
     // 撞墙跳：需 ≥1.4m 峰值才能稳定跃上 1 格台阶（6.5 只有 0.88m 会卡死在台阶前）
     if (res.hitWall && this.onGround && (this.wanderDir.x || this.wanderDir.z)) this.vel.y = GAMEPLAY.JUMP_SPEED;
+
+    // M2 状态引擎：流血掉血+粒子（动物无灼烧，需自行判死）
+    statusTick(this, g, dt, 0.7);
+    if (this.hp <= 0 && !this.dead) this.die();
 
     if (dist > 70 || this.pos.y < -8) this.dead = true;   // 兑底清理（正常不会发生）
 
@@ -454,6 +533,7 @@ export class EntityManager {
     this.animals = [];
     this.drops = [];
     this.projectiles = [];
+    this.particles = [];   // M2 轻量粒子
     this.zombieTimer = 2;
     this.animalTimer = 1;
   }
@@ -541,6 +621,7 @@ export class EntityManager {
     this._cleanup(this.animals);
     this._cleanup(this.drops);
     this._cleanup(this.projectiles);
+    updateParticles(this.game, dt);   // M2 粒子生命周期
   }
 
   _cleanup(list) {
