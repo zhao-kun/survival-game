@@ -27,7 +27,7 @@ export class Combat {
     // ---- 左键：远程射击 / 近战 & 采集 ----
     if (item && item.kind === 'ranged') {
       this.mining = null;
-      if (input.lmbPressed) this.tryShoot(item, slot);
+      if (input.lmbPressed) this.tryShoot(item, slot, itemId);
     } else {
       if (input.lmbPressed) this.tryMelee(item, slot, itemId);
       if (input.lmb) this.updateMining(dt, item);
@@ -236,12 +236,19 @@ export class Combat {
   }
 
   // ---------------- 远程射击 ----------------
-  tryShoot(item, slot = null) {
+  tryShoot(item, slot = null, itemId = null) {
     const g = this.game;
     const p = g.player;
     const mods = p.mods ?? g.skills.mods;
     const im = this.instMods(slot);
+    const info = weaponInfo(itemId ?? item?.id);   // M5：v2 武器解析（ITEMS 对象无 id 字段）
     if (this.attackCd > 0) return;
+
+    // M5 熟练度解锁限制（旧武器不限）
+    if (info && !g.mastery.isUnlocked(info.cls, info.mat, info.lv)) {
+      g.ui.toast(`${item?.name ?? '该武器'}品级尚未解锁——研读技能书提升熟练度（J 查看进度）`, '#ff9d5c');
+      return;
+    }
 
     const ammo = item.ammo;
     if (!g.inventory.has(ammo, 1)) {
@@ -259,7 +266,7 @@ export class Combat {
     const spawn = eye.clone().addScaledVector(dir, 0.5);
     const dmg = item.damage * mods.rangedMul * g.player.fxMul('rangedMul') * (1 + im.rangedDmg);
     g.sfx?.shoot();   // 弓弩弦响
-    g.entities.spawnProjectile(item.ammo, spawn, vel, dmg);
+    g.entities.spawnProjectile(item.ammo, spawn, vel, dmg, info ? { cls: info.cls, lv: info.lv, mat: info.mat, itemId: itemId ?? item?.id } : null);   // M5：携带武器信息供特技判定
   }
 
   // ---------------- 右键：放置 / 使用 ----------------

@@ -2,7 +2,7 @@
 // entities.js —— 僵尸 / 动物 / 掉落物 / 箭矢 / 实体管理器
 // ============================================================
 import * as THREE from 'three';
-import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS } from './config.js';
+import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL } from './config.js';
 import { buildHumanoid, buildItemCube } from './models.js';
 import { randRange, randInt, clamp } from './utils.js';
 
@@ -93,6 +93,7 @@ export class Zombie {
     this.flashT = 0;
     this.dead = false;
     this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
+    this.headH = 1.45;   // M5 头部判定线
 
     this.mesh = buildHumanoid({
       skin: 0x4a9a4a, shirt: 0x2a6f6f, pants: 0x3a3a6a,
@@ -118,10 +119,10 @@ export class Zombie {
   applyStatus(type, dur, dps = 0) { applyStatusImpl(this, type, dur, dps); }
   moveMul() { return moveMulImpl(this); }
 
-  takeDamage(dmg, knockDir) {
+  takeDamage(dmg, knockDir, opts = null) {
     if (this.dead) return;
     this.hp -= dmg;
-    this.aggro = true;
+    if (!opts?.noAggro) this.aggro = true;   // M5 隐蔽：弓 12m 外不惊动
     this.flashT = 0.15;
     this.game.sfx?.hit();   // 受击音效
     for (const m of this.materials()) m.emissive.setHex(0x881111);
@@ -276,6 +277,7 @@ export class Animal {
     this.wanderDir = new THREE.Vector3();
     this.dead = false;
     this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
+    this.headH = 0.85;   // M5 头部判定线（野猪）
 
     const g = new THREE.Group();
     const mat = c => new THREE.MeshLambertMaterial({ color: c });
@@ -293,10 +295,10 @@ export class Animal {
     game.scene.add(this.mesh);
   }
 
-  takeDamage(dmg, knockDir) {
+  takeDamage(dmg, knockDir, opts = null) {
     if (this.dead) return;
     this.hp -= dmg;
-    this.fleeT = 4;
+    if (!opts?.noAggro) this.fleeT = 4;   // M5 隐蔽：弓 12m 外不惊动（不触发逃窜）
     this.stunT = 0.45;    // 受击硬直：短暂踉跄，方便连续追击
     this.game.sfx?.hit();   // 受击音效
     if (knockDir) {
@@ -465,12 +467,15 @@ export class DropItem {
 // 箭矢 / 弩箭
 // ------------------------------------------------------------
 export class Projectile {
-  constructor(game, itemId, pos, vel, damage) {
+  // opts：M5 远程武器信息 { cls, lv, mat, itemId }（旧调用 null → 纯基础弹道）
+  constructor(game, itemId, pos, vel, damage, opts = null) {
     this.game = game;
     this.itemId = itemId;
     this.pos = pos.clone();
     this.vel = vel.clone();
     this.damage = damage;
+    this.wcls = opts?.cls ?? null;   // 弓/弩类别（特技判定）
+    this.wlv = opts?.lv ?? 0;        // 武器级别（流血强度）
     this.stuck = 0;
     this.dead = false;
     this.mesh = new THREE.Mesh(
@@ -517,8 +522,20 @@ export class Projectile {
         let dmg = this.damage * mods.rangedMul;
         const crit = Math.random() < mods.crit;
         if (crit) dmg *= 2;
-        e.takeDamage(dmg, this.vel.clone().normalize());
-        g.ui.toast(crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`, crit ? '#ffd54a' : '#ff9d5c');
+        // M5 头部判定：命中点高于头部线 → ×1.5
+        const head = next.y > e.pos.y + (e.headH ?? 1.45);
+        if (head) dmg *= HEADSHOT_MUL;
+        // M5 弓/弩特技：弓流血 1.5+0.3lv/3s，弩重伤 3+0.5lv/5s
+        if (this.wcls === 'bow') e.applyStatus?.('bleed', 3, 1.5 + 0.3 * this.wlv);
+        else if (this.wcls === 'crossbow') e.applyStatus?.('bleed', 5, 3 + 0.5 * this.wlv);
+        // M5 隐蔽：弓且 12m 外 → 不因这次攻击进入 aggro（潜行狙击）
+        const dist = e.pos.distanceTo(g.player.pos);
+        const noAggro = this.wcls === 'bow' && dist > 12;
+        e.takeDamage(dmg, this.vel.clone().normalize(), { noAggro });
+        g.ui.toast(head ? `🎯 爆头！-${Math.round(dmg)}`
+          : noAggro ? `🏹 隐蔽狙击 -${Math.round(dmg)}`
+          : crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`,
+          crit || head ? '#ffd54a' : '#ff9d5c');
         this.dead = true;
         return;
       }
@@ -579,8 +596,8 @@ export class EntityManager {
     this.drops.push(new DropItem(this.game, id, n, pos));
   }
 
-  spawnProjectile(itemId, pos, vel, damage) {
-    this.projectiles.push(new Projectile(this.game, itemId, pos, vel, damage));
+  spawnProjectile(itemId, pos, vel, damage, opts = null) {
+    this.projectiles.push(new Projectile(this.game, itemId, pos, vel, damage, opts));
   }
 
   nearestZombieDist() {
