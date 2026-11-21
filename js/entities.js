@@ -2,11 +2,18 @@
 // entities.js —— 僵尸 / 动物 / 掉落物 / 箭矢 / 实体管理器
 // ============================================================
 import * as THREE from 'three';
-import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget } from './config.js';
+import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS } from './config.js';
 import { buildHumanoid, buildItemCube } from './models.js';
 import { randRange, randInt, clamp } from './utils.js';
 
 const Z_HALF = 0.3, Z_HEIGHT = 1.8;
+const BOOK_KEYS = Object.keys(BOOKS);   // M3 技能书掉落用
+// M3：按概率掉落随机一类技能书
+function dropBook(g, pos, chance) {
+  if (Math.random() >= chance) return;
+  const cls = BOOK_KEYS[randInt(0, BOOK_KEYS.length - 1)];
+  g.entities.spawnDrop(BOOKS[cls].item, 1, pos);
+}
 
 // ============================================================
 // M2 状态效果引擎（docs/WEAPONS-DESIGN.md 4.1）
@@ -133,6 +140,7 @@ export class Zombie {
     g.player.addXp(this.cfg.xp);
     g.stats.kills++;
     g.ui.toast(`击杀 Lv.${this.level} 僵尸 +${this.cfg.xp} XP`, '#ffd54a');
+    dropBook(g, this.pos, 0.07);   // M3：僵尸 7% 掉技能书
     // 掉落判定
     const dropMul = (g.player.mods ?? g.skills.mods).dropMul;
     for (const entry of ZOMBIE_LOOT) {
@@ -344,6 +352,7 @@ export class Animal {
     if (Math.random() < 0.3) g.entities.spawnDrop('bone', randInt(1, 2), this.pos);   // 骨头：熬胶水原料
     g.player.addXp(ANIMAL_CFG.xp);
     g.ui.toast(`狩猎获得 生肉 ×${n}`, '#ffd54a');
+    dropBook(g, this.pos, 0.10);   // M3：猪 10% 掉技能书
   }
 
   update(dt) {

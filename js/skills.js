@@ -1,7 +1,7 @@
 // ============================================================
 // skills.js —— 技能系统（智力 / 力量 / 灵活 / 感知）
 // ============================================================
-import { SKILL_TREE } from './config.js';
+import { SKILL_TREE, W_TIER_ORDER, unlockByBooks } from './config.js';
 
 export class SkillSystem {
   constructor() {
@@ -57,4 +57,36 @@ export class SkillSystem {
       packBonus:     4 * l('str', 'pack'),   // 背包格数加成（力量·行囊）
     };
   }
+}
+
+// ============================================================
+// MasterySystem —— 武器熟练度（M3 技能书系统，docs/WEAPONS-DESIGN.md 5）
+// 六类武器各自累计研读本数 → unlockByBooks 决定可造/可用品级上限
+// ============================================================
+export class MasterySystem {
+  constructor() {
+    this.counts = { knife: 0, hammer: 0, club: 0, spear: 0, bow: 0, crossbow: 0 };
+  }
+
+  // 研读 n 本：返回 before/after 解锁状态与是否推进（gi 变化即解锁新档位）
+  add(cls, n = 1) {
+    const before = unlockByBooks(this.counts[cls] ?? 0);
+    this.counts[cls] = Math.min(99, (this.counts[cls] ?? 0) + n);
+    const after = unlockByBooks(this.counts[cls]);
+    return { before, after, upgraded: after.gi !== before.gi };
+  }
+
+  // 当前解锁档位 { tier, tierIdx, lvl, gi, maxed }
+  unlocked(cls) { return unlockByBooks(this.counts[cls] ?? 0); }
+
+  // 某类某材质某级是否已解锁（如 isUnlocked('knife','iron',3)）
+  isUnlocked(cls, mat, lv) {
+    const u = this.unlocked(cls);
+    const mi = W_TIER_ORDER.indexOf(mat);
+    if (mi < 0) return false;
+    return mi < u.tierIdx || (mi === u.tierIdx && lv <= u.lvl);
+  }
+
+  serialize() { return { ...this.counts }; }
+  load(d) { for (const k in this.counts) this.counts[k] = Math.max(0, d?.[k] ?? 0); }
 }

@@ -6,7 +6,7 @@ import { WORLD, BLOCK } from './config.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Inventory } from './inventory.js';
-import { SkillSystem } from './skills.js';
+import { SkillSystem, MasterySystem } from './skills.js';
 import { Crafting } from './crafting.js';
 import { EntityManager } from './entities.js';
 import { Combat } from './combat.js';
@@ -52,6 +52,7 @@ class Game {
     // ---- 世界与系统 ----
     this.world = new World(this.scene);
     this.skills = new SkillSystem();
+    this.mastery = new MasterySystem();   // M3：武器熟练度（技能书）
     this.inventory = new Inventory();
     this.player = new Player(this, this.findSpawn());
     this.crafting = new Crafting(this);
@@ -109,6 +110,7 @@ class Game {
     this.input.on('KeyE', () => toggleAndRelock(ui.el.panelInv));
     this.input.on('KeyB', () => toggleAndRelock(ui.el.panelPack));
     this.input.on('KeyK', () => toggleAndRelock(ui.el.panelSkills));
+    this.input.on('KeyJ', () => toggleAndRelock(ui.el.panelMastery));   // M3：熟练度面板
     this.input.on('KeyH', () => toggleAndRelock(ui.el.panelHelp));
     this.input.on('KeyV', () => { if (this.state === 'playing') this.player.toggleCamera(); });
     this.input.on('KeyM', () => {

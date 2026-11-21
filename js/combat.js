@@ -2,7 +2,7 @@
 // combat.js —— 战斗与交互：近战攻击 / 采集 / 射击 / 放置 / 使用
 // ============================================================
 import * as THREE from 'three';
-import { BLOCK, BLOCKS, ITEMS, GAMEPLAY, PLAN_GROUPS } from './config.js';
+import { BLOCK, BLOCKS, ITEMS, GAMEPLAY, PLAN_GROUPS, BOOKS, W_TIER } from './config.js';
 import { randRange, clamp } from './utils.js';
 import { MAT } from './sfx.js';
 
@@ -286,6 +286,28 @@ export class Combat {
       g.ui.toast(g.ui.pendingPlugin ? `已选择 ${item.name}，按 B 打开背包点插槽安装` : '取消安装', '#ffd54a');
       return;
     }
+
+    // M3 技能书 → 研读：消耗 1 本，熟练度 +1
+    if (this.studyBook(itemId, item)) g.inventory.consumeSelected(1);
+  }
+
+  // M3：研读技能书（快捷栏右键 / 背包面板点击共用）
+  studyBook(itemId, item) {
+    if (item?.kind !== 'book') return false;
+    const g = this.game;
+    const cls = Object.keys(BOOKS).find(k => BOOKS[k].item === itemId);
+    if (!cls) return false;
+    const r = g.mastery.add(cls, 1);
+    const b = BOOKS[cls];
+    const cnt = g.mastery.counts[cls];
+    if (r.upgraded) {
+      const u = r.after;
+      g.ui.toast(`研读${b.cn}！${W_TIER[u.tier].name}${u.lvl} 级武器已解锁（${cnt}/51 本）`, '#7ee787');
+    } else {
+      g.ui.toast(`研读${b.cn}（${cnt}/51 本，${r.after.maxed ? '已满级' : '继续研读解锁更高品级'}）`, '#ffd54a');
+    }
+    g.sfx?.click?.();
+    return true;
   }
 
   // 背包面板点击使用（不依赖快捷栏选中）
@@ -302,6 +324,10 @@ export class Combat {
       return;
     }
     if (item.kind === 'equip') { g.player.equipFromInv(idx); return; }
+    if (item.kind === 'book') {   // M3：背包面板点击研读
+      if (this.studyBook(s.id, item)) { inv.slots[idx].count--; if (inv.slots[idx].count <= 0) inv.slots[idx] = null; g.ui.updateInventoryPanel?.(); }
+      return;
+    }
     if (item.block != null) { g.ui.toast('方块需放入物品栏后才能放置（右键移入）', '#aaa'); return; }
     if (s.id === 'bottle_empty' || s.id === 'glass_cup') { g.ui.toast(`${ITEMS[s.id].name}需放入物品栏，对准水右键接水`, '#aaa'); return; }
     if (item.kind === 'weapon' || item.kind === 'tool') {

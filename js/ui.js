@@ -1,7 +1,7 @@
 // ============================================================
 // ui.js —— HUD / 背包 / 合成 / 技能树 / 提示 / 死亡界面
 // ============================================================
-import { ITEMS, EFFECTS, SKILL_TREE, pluginFits, hostTargetName, ZOMBIE_CFG } from './config.js';
+import { ITEMS, EFFECTS, SKILL_TREE, pluginFits, hostTargetName, ZOMBIE_CFG, BOOKS, W_TIER } from './config.js';
 import { EQUIP_SLOTS } from './player.js';
 import { STATION_RECIPES, FUEL } from './stations.js';
 
@@ -27,6 +27,7 @@ export class UI {
       panelPack: $('panel-backpack'), packGrid: $('pack-grid'), bar2Grid: $('bar2-grid'),
       equipGrid: $('equip-grid'), equipStats: $('equip-stats'),
       panelSkills: $('panel-skills'), skillPoints: $('skill-points'), skillsColumns: $('skills-columns'),
+      panelMastery: $('panel-mastery'), masteryRows: $('mastery-rows'),   // M3 熟练度面板
       panelHelp: $('panel-help'), helpContent: $('help-content'),
       lootFeed: $('loot-feed'),
       mobHud: $('mob-hud'), mobName: $('mob-hud-name'), mobFill: $('mob-hud-fill'), mobText: $('mob-hud-text'),
@@ -820,7 +821,7 @@ export class UI {
 
   // ---------------- 面板开关 ----------------
   isAnyPanelOpen() {
-    return [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation]
+    return [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation, this.el.panelMastery]
       .some(el => !el.classList.contains('hidden'));
   }
 
@@ -828,7 +829,7 @@ export class UI {
   togglePanel(el) {
     const willOpen = el.classList.contains('hidden');
     if (willOpen) {
-      [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation].forEach(p => {
+      [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation, this.el.panelMastery].forEach(p => {
         if (p !== el) p.classList.add('hidden');
       });
       this.stationPos = null;
@@ -839,6 +840,7 @@ export class UI {
       if (el === this.el.panelInv) { this.updateInventoryPanel(); this.updateCraftPanel(); }
       if (el === this.el.panelPack) { this.updateBackpackPanel(); this.updateEquipPanel(); }
       if (el === this.el.panelSkills) { this.buildSkills(); }
+      if (el === this.el.panelMastery) { this._mSig = null; this.updateMasteryPanel(); }   // M3
     } else {
       el.classList.add('hidden');
       this.pendingPlugin = null;
@@ -847,9 +849,28 @@ export class UI {
   }
 
   closeAllPanels() {
-    [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation].forEach(el => el.classList.add('hidden'));
+    [this.el.panelInv, this.el.panelPack, this.el.panelSkills, this.el.panelHelp, this.el.panelStation, this.el.panelMastery].forEach(el => el.classList.add('hidden'));
     this.stationPos = null;
     this.el.hotbar.style.display = '';   // 关面板恢复快捷栏
+  }
+
+  // ---------------- M3：武器熟练度面板 ----------------
+  updateMasteryPanel() {
+    const g = this.game;
+    if (!g.mastery) return;
+    const rows = Object.entries(BOOKS).map(([cls, b]) => {
+      const c = g.mastery.counts[cls] ?? 0;
+      const u = g.mastery.unlocked(cls);
+      const t = W_TIER[u.tier];
+      return `<div class="mastery-row">`
+        + `<span class="mr-book" style="color:${t.css}">${b.cn}</span>`
+        + `<span class="mr-cnt">${c} / 51 本</span>`
+        + `<span class="mr-unlock">已解锁：<b style="color:${t.css}">${t.name}${u.lvl} 级</b>${u.maxed ? '（满级）' : ''}</span>`
+        + `</div>`;
+    }).join('');
+    if (rows === this._mSig) return;   // 签名缓存
+    this._mSig = rows;
+    this.el.masteryRows.innerHTML = rows;
   }
 
   // ---------------- 死亡 ----------------
