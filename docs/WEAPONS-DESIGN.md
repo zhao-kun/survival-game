@@ -208,7 +208,7 @@ lvl     = gi % 6 + 1                // 1..6
 | **M1** | 数据层 | config.js：108 武器 + 72 护甲自动生成表、WEAPON_FX 特技表、BOOKS 表、钢锭物品；id 生成函数 + `weaponInfo(id)`/`armorInfo(id)` 解析器 + `unlockByBooks`/`booksForTierLvl` 解锁公式 | weapons-data (8941)：22/22（①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒）两连过 + 全量回归绿 | ✅ 已完成（2026-02） |
 | **M2** | 状态效果引擎 | entities.js：bleed/slow/cripple 字段 + applyStatus 取强不叠加 + moveMul 减速（震慢0.5/致残0.6）+ statusTick 掉血衰减 + 血条变色（流血红/致残黄/震慑蓝）+ 轻量粒子系统 spawnParticle/updateParticles；Zombie/Animal 共用 | status-fx (8942)：11/11 两连过（对照实验抵消灼烧）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M3** | 技能书系统 | skills.js 加 MasterySystem（六类计数+isUnlocked 判定）；掉书（僵尸 7%/猪 10%）；右键+背包点击双入口研读；**J 面板**（K 被技能树占用）签名缓存；存档序列化 | book-system (8943)：10/10 两连过（掉书率统计/双入口研读/边界 toast/J 面板 6 行/满级/存档）+ 全量回归绿 | ✅ 已完成（2026-02） |
-| **M4** | 近战特技 | combat.js tryMelee 重构：headshot 判定 + 刀流血断头 + 锤扇形 AOE 震慑 + 棍击飞爆头 + 枪致残直线穿透 | melee-fx (8944)：四类各 4–5 项（含概率统计抽样） | ⬜ |
+| **M4** | 近战特技 | tryMelee 加第三参 itemId（ITEMS 对象无 id 字段）；解锁限制（isUnlocked 挥击拦截）；applyMeleeFx：刀流血 dps=2+0.4lv/4s+断头 8%+2%lv、棍击飞 vy3.5+爆头 15%+2%lv 总伤×3、锤扇形 60° 半径 3.5+0.1lv 副目标 60%+震慢 25%+2%lv、枪致残 30%+3%lv/4s+直线穿透 70% 最多 3+floor(lv/2)；特技 toast 优先于命中 toast；旧武器（v1 id）不受限 | melee-fx (8944)：10/10 两连过（解锁拦截/四类特技数值/穿透计数/旧武器兼容）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M5** | 远程分级 | 弓弩 18 件 + 潜行 aggro 抑制 + 流血 + 投射物头部判定 + ammo 接线 | ranged-fx (8945)：分级伤害/攻速、隐蔽 12m、流血、爆头 8 项 | ⬜ |
 | **M6** | 护甲系统 | 72 件护甲 + 减伤公式接入 player 受伤 + 装备槽接线 + 合成 | armor-sys (8946)：减伤曲线、部位装配、材质门槛 9 项 | ⬜ |
 | **M7** | 插件扩充 | 6 新插件 + pluginFits/instMods 接线 + 掉落/合成 | plugins-v2 (8947)：6 插件效果生效与叠加 7 项 | ⬜ |

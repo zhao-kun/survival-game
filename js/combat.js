@@ -2,7 +2,7 @@
 // combat.js —— 战斗与交互：近战攻击 / 采集 / 射击 / 放置 / 使用
 // ============================================================
 import * as THREE from 'three';
-import { BLOCK, BLOCKS, ITEMS, GAMEPLAY, PLAN_GROUPS, BOOKS, W_TIER } from './config.js';
+import { BLOCK, BLOCKS, ITEMS, GAMEPLAY, PLAN_GROUPS, BOOKS, W_TIER, weaponInfo } from './config.js';
 import { randRange, clamp } from './utils.js';
 import { MAT } from './sfx.js';
 
@@ -29,7 +29,7 @@ export class Combat {
       this.mining = null;
       if (input.lmbPressed) this.tryShoot(item, slot);
     } else {
-      if (input.lmbPressed) this.tryMelee(item, slot);
+      if (input.lmbPressed) this.tryMelee(item, slot, itemId);
       if (input.lmb) this.updateMining(dt, item);
       else this.mining = null;
     }
@@ -53,11 +53,18 @@ export class Combat {
   }
 
   // ---------------- 近战 ----------------
-  tryMelee(item, slot = null) {
+  tryMelee(item, slot = null, itemId = null) {
     const g = this.game;
     const p = g.player;
     const mods = p.mods ?? g.skills.mods;
     const im = this.instMods(slot);
+    const info = weaponInfo(itemId ?? item?.id);   // M4：v2 武器解析（ITEMS 对象无 id 字段，需传字符串；旧武器 null 不受限）
+
+    // M4 熟练度解锁限制
+    if (info && !g.mastery.isUnlocked(info.cls, info.mat, info.lv)) {
+      g.ui.toast(`${item?.name ?? '该武器'}品级尚未解锁——研读技能书提升熟练度（J 查看进度）`, '#ff9d5c');
+      return;
+    }
 
     const damage = (item?.damage ?? 1.5) + im.meleeDmg;
     const rate = (item?.rate ?? 0.6) / (mods.attackMul + im.atkSpeed);
@@ -89,14 +96,67 @@ export class Combat {
       const crit = Math.random() < (mods.crit + im.crit);
       if (crit) dmg *= 2;
       const knock = look.clone().setY(0).normalize().multiplyScalar(item?.knock ?? 1);
+      const fxToast = info ? this.applyMeleeFx(info, best, dmg, look, eye) : false;   // M4：特技先于主伤害（断头/爆头追加）
       best.takeDamage(dmg, knock);
       g.sfx?.[crit ? 'crit' : 'hit']();   // 命中音效（暴击更亮）
-      g.ui.toast(crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`, crit ? '#ffd54a' : '#ff9d5c');
+      if (!fxToast && !best.dead) g.ui.toast(crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`, crit ? '#ffd54a' : '#ff9d5c');   // 特技提示优先
       p.addXp(2);
     }
 
     // 未命中实体时若指向方块则开始采集（updateMining 持续处理）
     if (!hitAny) this.updateMining(0.0001, item);
+  }
+
+  // ---------------- M4 近战特技（docs/WEAPONS-DESIGN.md 4.1） ----------------
+  // 刀：流血 dps=2+0.4lv/4s + 断头 8%+2%lv；棍：击飞 vy3.5 + 爆头 15%+2%lv 总伤×3；
+  // 锤：扇形 AOE 半径 3.5+0.1lv 副目标 60% + 震慢 25%+2%lv/2s（主目标也判）；枪：致残 30%+3%lv/4s + 直线穿透 70% 最多 3+floor(lv/2)
+  applyMeleeFx(info, main, dmg, look, eye) {
+    const g = this.game;
+    const lv = info.lv;
+    if (info.cls === 'knife') {
+      main.applyStatus?.('bleed', 4, 2 + 0.4 * lv);
+      if (Math.random() < 0.08 + 0.02 * lv) {   // 断头：直接斩杀
+        main.takeDamage(9999, null);
+        g.ui.toast('🗡️ 断头一击！', '#ff5c5c');
+        return true;
+      }
+    } else if (info.cls === 'club') {
+      main.vel.y = Math.max(main.vel.y ?? 0, 3.5);   // 击飞
+      if (Math.random() < 0.15 + 0.02 * lv) {        // 爆头：总伤 ×3（主伤已含 ×1，追加 ×2）
+        main.takeDamage(dmg * 2, null);
+        g.ui.toast('💥 爆头！伤害 ×3', '#ffd54a');
+        return true;
+      }
+    } else if (info.cls === 'hammer') {
+      if (Math.random() < 0.25 + 0.02 * lv) main.applyStatus?.('slow', 2);   // 主目标震慢
+      const radius = 3.5 + 0.1 * lv;
+      const cosHalf = Math.cos(Math.PI / 3);   // 60° 半角扇形
+      let n = 0;
+      for (const e of [...g.entities.zombies, ...g.entities.animals]) {
+        if (e === main || e.dead) continue;
+        const c = new THREE.Vector3(e.pos.x - eye.x, e.pos.y + 0.9 - eye.y, e.pos.z - eye.z);
+        if (c.length() > radius || c.normalize().dot(look) < cosHalf) continue;
+        e.takeDamage(dmg * 0.6, look.clone().setY(0).normalize().multiplyScalar(1));
+        if (Math.random() < 0.25 + 0.02 * lv) e.applyStatus?.('slow', 2);
+        n++;
+      }
+      if (n > 0) { g.ui.toast(`🔨 震地打击：波及 ${n} 个目标`, '#ffd54a'); return true; }
+    } else if (info.cls === 'spear') {
+      if (Math.random() < 0.30 + 0.03 * lv) main.applyStatus?.('cripple', 4);
+      const maxP = 3 + Math.floor(lv / 2);
+      let n = 0;
+      for (const e of [...g.entities.zombies, ...g.entities.animals]) {
+        if (e === main || e.dead || n >= maxP) continue;
+        const v = new THREE.Vector3(e.pos.x - main.pos.x, 0, e.pos.z - main.pos.z);   // 主目标后方直线
+        const ahead = v.dot(look);
+        if (ahead <= 0) continue;
+        if (v.clone().sub(look.clone().multiplyScalar(ahead)).length() > 0.9) continue;
+        e.takeDamage(dmg * 0.7, look.clone().setY(0).normalize().multiplyScalar(1));
+        n++;
+      }
+      if (n > 0) { g.ui.toast(`⚔️ 突穿：贯穿 ${n} 个目标`, '#ffd54a'); return true; }
+    }
+    return false;
   }
 
   // ---------------- 采集（按住左键） ----------------
