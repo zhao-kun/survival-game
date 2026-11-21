@@ -106,6 +106,11 @@ export class Crafting {
       if (Math.random() < bonus) n += 1;
     }
     this.game.inventory.add(j.out, n);
+    // M6 材质门槛：产出铁质武器 → 解锁铁质护甲资格
+    const od = ITEMS[j.out];
+    if (od?.tier === 'iron' && (od.kind === 'melee' || od.kind === 'ranged')) {
+      this.game.flags.ironWeapon = true;
+    }
     this.game.sfx?.craft();   // 制作完成叮铃
     this.game.player.addXp(j.xp);
     this.game.ui.toast(`✅ ${j.label}做好了${n > 1 ? ` ×${n}` : ''}！`, '#b7ff5e');

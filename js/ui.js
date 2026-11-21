@@ -637,7 +637,7 @@ export class UI {
   updateEquipStats() {
     const g = this.game;
     const p = g.player;
-    const reduce = Math.min(75, Math.round(p.armor * 5.5));
+    const reduce = Math.round(Math.min(0.75, p.armor / (p.armor + 30)) * 100);   // M6：A/(A+30)
     const used = g.inventory.slots.slice(g.inventory.hotbarSize).filter(Boolean).length;
     this.el.equipStats.innerHTML =
       `🛡 护甲 <b>${p.armor}</b>（僵尸伤害 -${reduce}%）<br>` +

@@ -2,7 +2,7 @@
 // player.js —— 玩家：移动物理 / 相机(第一&第三人称) / 生存数值 / 经验
 // ============================================================
 import * as THREE from 'three';
-import { WORLD, GAMEPLAY, ITEMS, EFFECTS, BLOCK, pluginFits, hostTargetName } from './config.js';
+import { WORLD, GAMEPLAY, ITEMS, EFFECTS, BLOCK, pluginFits, hostTargetName, armorInfo } from './config.js';
 import { buildHumanoid, buildHeldItem } from './models.js';
 import { clamp } from './utils.js';
 
@@ -109,7 +109,19 @@ export class Player {
     const g = this.game;
     const s = g.inventory.slots[idx];
     const def = s && ITEMS[s.id];
-    if (!def || def.kind !== 'equip') return false;
+    if (!def || (def.kind !== 'equip' && def.kind !== 'armor')) return false;
+    // M6 材质门槛：铁质护甲需先获得过任意铁质武器；钢制护甲需当前持有钢锭
+    if (def.kind === 'armor') {
+      const ai = armorInfo(s.id);
+      if (ai?.mat === 'iron' && !g.flags?.ironWeapon) {
+        g.ui.toast('铁质护甲需先获得任意铁质武器（合成或拾取）', '#ff7b6b');
+        return false;
+      }
+      if (ai?.mat === 'steel' && g.inventory.countOf('steel_ingot') < 1) {
+        g.ui.toast('钢制护甲需要持有钢锭作为材料凭证', '#ff7b6b');
+        return false;
+      }
+    }
     const key = def.equip;
     const cur = this.equipment[key];
     const backup = s;
@@ -229,9 +241,9 @@ export class Player {
     }
     amount *= (1 - mods.tough);
     amount *= this.fxMul('dmgTaken');   // 坚韧等 buff：受伤减免
-    // 护甲减伤（仅对僵尸攻击；上限 75%）
+    // M6 护甲减伤（仅对僵尸攻击）：受伤乘子 = A/(A+30)，上限 75%（A≥90）
     if (source === 'zombie') {
-      amount *= (1 - Math.min(0.75, this.armor * 0.055));
+      amount *= (1 - Math.min(0.75, this.armor / (this.armor + 30)));
     }
     this.hp -= amount;
     this.game.sfx?.hurt();   // 玩家受伤下滑音

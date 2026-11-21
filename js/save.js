@@ -28,6 +28,7 @@ export function serializeGame(game, userId) {
     },
     skills: { lv: { ...game.skills.lv } },
     mastery: game.mastery?.serialize() ?? null,   // M3：武器熟练度（技能书）
+    flags: { ...(game.flags ?? {}) },   // M6 材质门槛
     inv: {
       slots: inv.slots.map(s => (s ? { id: s.id, count: s.count } : null)),
       size: inv.slots.length,
@@ -73,6 +74,7 @@ export function applySaveData(game, data) {
   game.skills.lv = { ...(data.skills?.lv ?? {}) };
   game.skills.recompute();
   game.mastery?.load(data.mastery);   // M3：熟练度恢复（旧档无此字段保持全 0）
+  if (data.flags) Object.assign(game.flags ?? (game.flags = {}), data.flags);   // M6
 
   // 物品栏 / 装备 / 容量
   if (data.inv) {

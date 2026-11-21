@@ -130,7 +130,7 @@ r = player.installPlugin({ equip: 'chest' });
 check(r.ok && player.armor === 6, '强化插件提升护甲 4→6');
 player.hp = 50;
 player.damage(10, 'zombie');
-const expected = 50 - 10 * (1 - Math.min(0.75, 6 * 0.055));
+const expected = 50 - 10 * (1 - Math.min(0.75, 6 / (6 + 30)));   // M6：A/(A+30)
 check(Math.abs(player.hp - expected) < 1e-6, `护甲减伤正确 (${player.hp.toFixed(2)})`);
 
 // 插件兼容性

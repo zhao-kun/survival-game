@@ -53,6 +53,7 @@ class Game {
     this.world = new World(this.scene);
     this.skills = new SkillSystem();
     this.mastery = new MasterySystem();   // M3：武器熟练度（技能书）
+    this.flags = { ironWeapon: false };   // M6 材质门槛：铁质护甲解锁资格
     this.inventory = new Inventory();
     this.player = new Player(this, this.findSpawn());
     this.crafting = new Crafting(this);
