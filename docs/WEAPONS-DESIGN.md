@@ -211,7 +211,7 @@ lvl     = gi % 6 + 1                // 1..6
 | **M4** | 近战特技 | tryMelee 加第三参 itemId（ITEMS 对象无 id 字段）；解锁限制（isUnlocked 挥击拦截）；applyMeleeFx：刀流血 dps=2+0.4lv/4s+断头 8%+2%lv、棍击飞 vy3.5+爆头 15%+2%lv 总伤×3、锤扇形 60° 半径 3.5+0.1lv 副目标 60%+震慢 25%+2%lv、枪致残 30%+3%lv/4s+直线穿透 70% 最多 3+floor(lv/2)；特技 toast 优先于命中 toast；旧武器（v1 id）不受限 | melee-fx (8944)：10/10 两连过（解锁拦截/四类特技数值/穿透计数/旧武器兼容）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M5** | 远程分级 | 实体加 headH（僵尸 1.45/猪 0.85）+ takeDamage 第三参 opts.noAggro（弓隐蔽仅抑 aggro/猪逃窜）；Projectile 携带武器信息（wcls/wlv）：头部命中点 y>pos.y+headH ×1.5、弓流血 1.5+0.3lv/3s、弩重伤 3+0.5lv/5s、弓 12m 外不 aggro（潜行狙击 toast）；tryShoot 加 itemId+解锁限制+opts 传递；旧 v1 弓弩不限 | ranged-fx (8945)：10/10 两连过（解锁拦截/弓弩流血/头部×1.5/隐蔽 12m/猪头线/信息传递/流血取强）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M6** | 护甲系统 | damage 新公式 A/(A+30) 上限75%（仅 zombie 源）；equipFromInv 支持 kind='armor'+材质门槛（铁质需 flags.ironWeapon 合成铁武器置位/钢制需持有钢锭）；flags 存档；UI 面板减伤百分比同步新公式；旧 kind='equip' 护甲兼容 | armor-sys (8946)：9/9 两连过（曲线 A=10/30/60、坠落不受甲、四件装配 10 点/25%、双门槛、craft 置位、旧护甲、存档、UI）+ 全量回归绿（smoke 旧断言同步新公式） | ✅ 已完成（2026-02） |
-| **M7** | 插件扩充 | 6 新插件 + pluginFits/instMods 接线 + 掉落/合成 | plugins-v2 (8947)：6 插件效果生效与叠加 7 项 | ⬜ |
+| **M7** | 插件扩充 | 6 新插件（clsReq 类别约束：stun/aoe→锤、pierce/cripple→枪、bleed→刀弓弩、head→全）+ instMods 6 新字段 + applyMeleeFx 全特技接入（bleedMul×1.25/stunAdd+10%/headAdd+6%/crippleAdd+12%/aoeAdd+0.6m/pierceAdd+1）+ Projectile 接 bleedMul/headAdd + ZOMBIE_LOOT 池扩充 + 6 条工作台配方（铁锭×2+煤） | plugins-v2 (8947)：10/10 两连过（适配矩阵/instMods/AOE半径/流血/爆头/穿透/致残震慢/远程插件/掉落配方）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M8** | 整合与平衡 | 工作台锁定 UI + 配方材料表 + 钢锭熔炼 + 存档兼容 + 数值平衡过一遍（僵尸 TTK 曲线） | weapons-e2e (8948)：全链路（打怪→掉书→研读→解锁→合成→穿戴→实战）+ 全量回归 | ⬜ |
 
 **预计节奏**：M1–M2 一次交付；M3–M4 一次；M5–M6 一次；M7–M8 一次（共 4 轮，每轮跑全量回归）。

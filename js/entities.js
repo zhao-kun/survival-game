@@ -476,6 +476,8 @@ export class Projectile {
     this.damage = damage;
     this.wcls = opts?.cls ?? null;   // 弓/弩类别（特技判定）
     this.wlv = opts?.lv ?? 0;        // 武器级别（流血强度）
+    this.bleedMul = opts?.bleedMul ?? 0;   // M7 放血：流血 dps +25%
+    this.headAdd = opts?.headAdd ?? 0;     // M7 狩猎：爆头判定概率
     this.stuck = 0;
     this.dead = false;
     this.mesh = new THREE.Mesh(
@@ -522,12 +524,12 @@ export class Projectile {
         let dmg = this.damage * mods.rangedMul;
         const crit = Math.random() < mods.crit;
         if (crit) dmg *= 2;
-        // M5 头部判定：命中点高于头部线 → ×1.5
-        const head = next.y > e.pos.y + (e.headH ?? 1.45);
+        // M5 头部判定：命中点高于头部线 → ×1.5；M7 狩猎：插件概率补判头部
+        const head = next.y > e.pos.y + (e.headH ?? 1.45) || Math.random() < this.headAdd;
         if (head) dmg *= HEADSHOT_MUL;
-        // M5 弓/弩特技：弓流血 1.5+0.3lv/3s，弩重伤 3+0.5lv/5s
-        if (this.wcls === 'bow') e.applyStatus?.('bleed', 3, 1.5 + 0.3 * this.wlv);
-        else if (this.wcls === 'crossbow') e.applyStatus?.('bleed', 5, 3 + 0.5 * this.wlv);
+        // M5 弓/弩特技：弓流血 1.5+0.3lv/3s，弩重伤 3+0.5lv/5s；M7 放血：×(1+bleedMul)
+        if (this.wcls === 'bow') e.applyStatus?.('bleed', 3, (1.5 + 0.3 * this.wlv) * (1 + this.bleedMul));
+        else if (this.wcls === 'crossbow') e.applyStatus?.('bleed', 5, (3 + 0.5 * this.wlv) * (1 + this.bleedMul));
         // M5 隐蔽：弓且 12m 外 → 不因这次攻击进入 aggro（潜行狙击）
         const dist = e.pos.distanceTo(g.player.pos);
         const noAggro = this.wcls === 'bow' && dist > 12;

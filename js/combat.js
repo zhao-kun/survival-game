@@ -40,7 +40,8 @@ export class Combat {
 
   // 手持物品实例上的插件效果汇总
   instMods(slot) {
-    const out = { meleeDmg: 0, atkSpeed: 0, crit: 0, rangedDmg: 0 };
+    const out = { meleeDmg: 0, atkSpeed: 0, crit: 0, rangedDmg: 0,
+      bleedMul: 0, stunAdd: 0, headAdd: 0, crippleAdd: 0, aoeAdd: 0, pierceAdd: 0 };   // M7：特技强化插件
     for (const mid of slot?.mods ?? []) {
       const e = ITEMS[mid]?.effect;
       if (!e) continue;
@@ -48,6 +49,12 @@ export class Combat {
       else if (e.k === 'atkSpeed') out.atkSpeed += e.v;
       else if (e.k === 'crit') out.crit += e.v;
       else if (e.k === 'rangedDmg') out.rangedDmg += e.v;
+      else if (e.k === 'bleedMul') out.bleedMul += e.v;
+      else if (e.k === 'stunAdd') out.stunAdd += e.v;
+      else if (e.k === 'headAdd') out.headAdd += e.v;
+      else if (e.k === 'crippleAdd') out.crippleAdd += e.v;
+      else if (e.k === 'aoeAdd') out.aoeAdd += e.v;
+      else if (e.k === 'pierceAdd') out.pierceAdd += e.v;
     }
     return out;
   }
@@ -96,7 +103,7 @@ export class Combat {
       const crit = Math.random() < (mods.crit + im.crit);
       if (crit) dmg *= 2;
       const knock = look.clone().setY(0).normalize().multiplyScalar(item?.knock ?? 1);
-      const fxToast = info ? this.applyMeleeFx(info, best, dmg, look, eye) : false;   // M4：特技先于主伤害（断头/爆头追加）
+      const fxToast = info ? this.applyMeleeFx(info, best, dmg, look, eye, im) : false;   // M4：特技先于主伤害（断头/爆头追加）；M7：传插件
       best.takeDamage(dmg, knock);
       g.sfx?.[crit ? 'crit' : 'hit']();   // 命中音效（暴击更亮）
       if (!fxToast && !best.dead) g.ui.toast(crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`, crit ? '#ffd54a' : '#ff9d5c');   // 特技提示优先
@@ -110,26 +117,28 @@ export class Combat {
   // ---------------- M4 近战特技（docs/WEAPONS-DESIGN.md 4.1） ----------------
   // 刀：流血 dps=2+0.4lv/4s + 断头 8%+2%lv；棍：击飞 vy3.5 + 爆头 15%+2%lv 总伤×3；
   // 锤：扇形 AOE 半径 3.5+0.1lv 副目标 60% + 震慢 25%+2%lv/2s（主目标也判）；枪：致残 30%+3%lv/4s + 直线穿透 70% 最多 3+floor(lv/2)
-  applyMeleeFx(info, main, dmg, look, eye) {
+  applyMeleeFx(info, main, dmg, look, eye, im = null) {
     const g = this.game;
     const lv = info.lv;
+    const imB = im?.bleedMul ?? 0, imS = im?.stunAdd ?? 0, imH = im?.headAdd ?? 0;
+    const imC = im?.crippleAdd ?? 0, imA = im?.aoeAdd ?? 0, imP = im?.pierceAdd ?? 0;
     if (info.cls === 'knife') {
-      main.applyStatus?.('bleed', 4, 2 + 0.4 * lv);
-      if (Math.random() < 0.08 + 0.02 * lv) {   // 断头：直接斩杀
+      main.applyStatus?.('bleed', 4, (2 + 0.4 * lv) * (1 + imB));   // M7 放血：流血 dps +25%
+      if (Math.random() < 0.08 + 0.02 * lv + imH) {   // 断头：直接斩杀；M7 狩猎：概率 +6%
         main.takeDamage(9999, null);
         g.ui.toast('🗡️ 断头一击！', '#ff5c5c');
         return true;
       }
     } else if (info.cls === 'club') {
       main.vel.y = Math.max(main.vel.y ?? 0, 3.5);   // 击飞
-      if (Math.random() < 0.15 + 0.02 * lv) {        // 爆头：总伤 ×3（主伤已含 ×1，追加 ×2）
+      if (Math.random() < 0.15 + 0.02 * lv + imH) {        // 爆头：总伤 ×3；M7 狩猎：概率 +6%
         main.takeDamage(dmg * 2, null);
         g.ui.toast('💥 爆头！伤害 ×3', '#ffd54a');
         return true;
       }
     } else if (info.cls === 'hammer') {
-      if (Math.random() < 0.25 + 0.02 * lv) main.applyStatus?.('slow', 2);   // 主目标震慢
-      const radius = 3.5 + 0.1 * lv;
+      if (Math.random() < 0.25 + 0.02 * lv + imS) main.applyStatus?.('slow', 2);   // 主目标震慢；M7 震慑：+10%
+      const radius = 3.5 + 0.1 * lv + imA;   // M7 荡涤：扇形半径 +0.6m
       const cosHalf = Math.cos(Math.PI / 3);   // 60° 半角扇形
       let n = 0;
       for (const e of [...g.entities.zombies, ...g.entities.animals]) {
@@ -137,13 +146,13 @@ export class Combat {
         const c = new THREE.Vector3(e.pos.x - eye.x, e.pos.y + 0.9 - eye.y, e.pos.z - eye.z);
         if (c.length() > radius || c.normalize().dot(look) < cosHalf) continue;
         e.takeDamage(dmg * 0.6, look.clone().setY(0).normalize().multiplyScalar(1));
-        if (Math.random() < 0.25 + 0.02 * lv) e.applyStatus?.('slow', 2);
+        if (Math.random() < 0.25 + 0.02 * lv + imS) e.applyStatus?.('slow', 2);
         n++;
       }
       if (n > 0) { g.ui.toast(`🔨 震地打击：波及 ${n} 个目标`, '#ffd54a'); return true; }
     } else if (info.cls === 'spear') {
-      if (Math.random() < 0.30 + 0.03 * lv) main.applyStatus?.('cripple', 4);
-      const maxP = 3 + Math.floor(lv / 2);
+      if (Math.random() < 0.30 + 0.03 * lv + imC) main.applyStatus?.('cripple', 4);   // M7 破甲：+12%
+      const maxP = 3 + Math.floor(lv / 2) + Math.round(imP);   // M7 贯穿：人数 +1
       let n = 0;
       for (const e of [...g.entities.zombies, ...g.entities.animals]) {
         if (e === main || e.dead || n >= maxP) continue;
@@ -266,7 +275,7 @@ export class Combat {
     const spawn = eye.clone().addScaledVector(dir, 0.5);
     const dmg = item.damage * mods.rangedMul * g.player.fxMul('rangedMul') * (1 + im.rangedDmg);
     g.sfx?.shoot();   // 弓弩弦响
-    g.entities.spawnProjectile(item.ammo, spawn, vel, dmg, info ? { cls: info.cls, lv: info.lv, mat: info.mat, itemId: itemId ?? item?.id } : null);   // M5：携带武器信息供特技判定
+    g.entities.spawnProjectile(item.ammo, spawn, vel, dmg, info ? { cls: info.cls, lv: info.lv, mat: info.mat, itemId: itemId ?? item?.id, bleedMul: im.bleedMul, headAdd: im.headAdd } : null);   // M5：武器信息；M7：插件
   }
 
   // ---------------- 右键：放置 / 使用 ----------------

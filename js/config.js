@@ -136,6 +136,13 @@ export const ITEMS = {
   mod_light:  { name: '轻羽插件', icon: '🪶', color: 0xbfe3ef, kind: 'plugin', target: 'armor',    stack: 8, effect: { k: 'move',      v: 0.06 }, desc: '移动速度 +6%' },
   mod_pack:   { name: '扩容插件', icon: '📦', color: 0x8a6236, kind: 'plugin', target: 'backpack', stack: 8, effect: { k: 'pack',      v: 4    }, desc: '背包格数 +4' },
   mod_scav:   { name: '掠夺插件', icon: '🍀', color: 0x5a4fcf, kind: 'plugin', target: 'backpack', stack: 8, effect: { k: 'drop',      v: 0.10 }, desc: '僵尸掉落几率 +10%' },
+  // —— M7 插件 v2：特技强化（clsReq = 限定武器类别，v2 武器有 cls 字段）——
+  mod_bleed:   { name: '放血插件', icon: '🩸', color: 0xd04a4a, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'bleedMul',  v: 0.25 }, clsReq: ['knife', 'bow', 'crossbow'], desc: '流血伤害 +25%（刀/弓/弩）' },
+  mod_stun:    { name: '震慑插件', icon: '💫', color: 0xb49dff, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'stunAdd',   v: 0.10 }, clsReq: ['hammer'], desc: '锤震慢概率 +10%' },
+  mod_head:    { name: '狩猎插件', icon: '🏹', color: 0xffa94d, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'headAdd',   v: 0.06 }, desc: '头部特技/爆头判定 +6%' },
+  mod_cripple: { name: '破甲插件', icon: '💥', color: 0xffd166, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'crippleAdd', v: 0.12 }, clsReq: ['spear'], desc: '致残概率 +12%（枪）' },
+  mod_aoe:     { name: '荡涤插件', icon: '🌀', color: 0x63e6be, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'aoeAdd',    v: 0.6 }, clsReq: ['hammer'], desc: '锤扇形半径 +0.6m' },
+  mod_pierce:  { name: '贯穿插件', icon: '➡️', color: 0x74c0fc, kind: 'plugin', target: 'weapon', stack: 8, effect: { k: 'pierceAdd', v: 1 }, clsReq: ['spear'], desc: '枪穿透人数 +1' },
 
   // —— 工作台系统：基础材料 ——
   bone:      { name: '骨头',     icon: '🦴', color: 0xe8e2d0, kind: 'material', stack: 64 },
@@ -166,7 +173,12 @@ export const ITEMS = {
 // 插件是否能装到宿主装备/武器上
 export function pluginFits(pDef, hostDef) {
   if (!pDef || pDef.kind !== 'plugin' || !hostDef) return false;
-  if (pDef.target === 'weapon')   return ['melee', 'ranged', 'tool'].includes(hostDef.kind);
+  if (pDef.target === 'weapon') {
+    // M7：新插件限定武器类别（clsReq），旧通用插件任意武器
+    if (!['melee', 'ranged', 'tool'].includes(hostDef.kind)) return false;
+    if (pDef.clsReq) return pDef.clsReq.includes(hostDef.cls);
+    return true;
+  }
   if (pDef.target === 'armor')    return ['head', 'chest', 'legs', 'boots'].includes(hostDef.equip);
   if (pDef.target === 'backpack') return hostDef.equip === 'backpack';
   return false;
@@ -317,6 +329,13 @@ export const RECIPES = [
   { out: 'pack_explorer', n: 1, cost: { leather: 6, iron_ingot: 1 } },
   // 插件（熔炉精密加工）
   { out: 'mod_sharp', n: 1, cost: { iron_ingot: 1, coal: 1 },  station: 'furnace' },
+  // —— M7 插件 v2：铁锭+煤 工作台合成 ——
+  { out: 'mod_bleed',   n: 1, cost: { iron_ingot: 2, coal: 1, bone: 1 }, station: 'workbench' },
+  { out: 'mod_stun',    n: 1, cost: { iron_ingot: 2, coal: 1 }, station: 'workbench' },
+  { out: 'mod_head',    n: 1, cost: { iron_ingot: 2, coal: 1 }, station: 'workbench' },
+  { out: 'mod_cripple', n: 1, cost: { iron_ingot: 2, coal: 1, cloth: 1 }, station: 'workbench' },
+  { out: 'mod_aoe',     n: 1, cost: { iron_ingot: 2, coal: 1 }, station: 'workbench' },
+  { out: 'mod_pierce',  n: 1, cost: { iron_ingot: 2, coal: 1 }, station: 'workbench' },
   { out: 'mod_quick', n: 1, cost: { iron_ingot: 1, coal: 1 },  station: 'furnace' },
   { out: 'mod_light', n: 1, cost: { iron_ingot: 1, coal: 2 },  station: 'furnace' },
   { out: 'mod_armor', n: 1, cost: { iron_ingot: 2, coal: 1 },  station: 'furnace' },
@@ -410,7 +429,8 @@ export const ZOMBIE_LOOT = [
       return { id: `${tier}_${kind}`, n: 1 };
     } },
   { chance: 0.08, type: 'plugin', make: () => {
-      const pool = ['mod_sharp', 'mod_quick', 'mod_crit', 'mod_scope', 'mod_armor', 'mod_light', 'mod_pack', 'mod_scav'];
+      const pool = ['mod_sharp', 'mod_quick', 'mod_crit', 'mod_scope', 'mod_armor', 'mod_light', 'mod_pack', 'mod_scav',
+        'mod_bleed', 'mod_stun', 'mod_head', 'mod_cripple', 'mod_aoe', 'mod_pierce'];   // M7：插件池扩充
       return { id: pool[Math.floor(Math.random() * pool.length)], n: 1 };
     } },
   { chance: 0.40, type: 'material', make: () => ({ id: 'bone', n: 1 + Math.floor(Math.random() * 2) }) },   // 骨头：熬胶水原料
