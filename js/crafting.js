@@ -3,7 +3,7 @@
 // 所有制作都需要时间：简单材料秒级、工具数秒、冶炼/装备十余秒；
 // 同一时刻只能进行一件制作；篝火类制作离开篝火 4m 自动暂停。
 // ============================================================
-import { RECIPES, ITEMS, BLOCK } from './config.js';
+import { RECIPES, ITEMS, BLOCK, W_TIER, W_TIER_ORDER, BOOKS } from './config.js';
 
 // 每种产物的制作时长（秒）。未列出的配方兜底 5 秒——不存在零耗时制作。
 export const CRAFT_TIME = {
@@ -36,13 +36,14 @@ export class Crafting {
   constructor(game) {
     this.game = game;
     this.recipes = RECIPES;
-    for (const r of this.recipes) r.time = CRAFT_TIME[r.out] ?? 5;   // 附着制作时长
+    for (const r of this.recipes) r.time = CRAFT_TIME[r.out] ?? r.time ?? 5;   // 附着制作时长（M8：v2 配方自带耗时优先，旧配方用 CRAFT_TIME 表）
     this.job = null;   // 进行中的制作 { out, n, label, icon, remaining, total, smelt, xp, stationPos }
   }
 
   // 附近是否有指定工作站
   nearStation(station) {
-    const map = { campfire: BLOCK.CAMPFIRE, furnace: BLOCK.FURNACE };
+    // M8：工作台纳入工作站检测（v2 武器/护甲配方全部在 workbench）
+    const map = { campfire: BLOCK.CAMPFIRE, furnace: BLOCK.FURNACE, workbench: BLOCK.WORKBENCH };
     return this.game.world.nearBlock(this.game.player.pos, map[station], 4);
   }
 
@@ -61,8 +62,16 @@ export class Crafting {
     if (recipe.needUnlock && !(this.game.player.mods ?? this.game.skills.mods).unlockSteel) {
       return { ok: false, reason: '需要技能【智力·蓝图】' };
     }
+    // M8：v2 武器配方熟练度解锁（石 L1 免费起步，往上靠技能书）
+    if (recipe.unlock) {
+      const u = recipe.unlock;
+      if (!this.game.mastery.isUnlocked(u.cls, u.mat, u.lv)) {
+        const need = Math.ceil(((W_TIER_ORDER.indexOf(u.mat) * 6 + u.lv - 1) * 3 - (this.game.mastery.counts[u.cls] ?? 0)) / 3);
+        return { ok: false, reason: `需 ${W_TIER[u.mat].name}${u.lv} 级熟练度（${BOOKS[u.cls]?.cn ?? ''}还差 ${Math.max(0, need)} 本）` };
+      }
+    }
     if (recipe.station && !this.nearStation(recipe.station)) {
-      return { ok: false, reason: `需要靠近${recipe.station === 'campfire' ? '篝火' : '熔炉'}` };
+      return { ok: false, reason: `需要靠近${recipe.station === 'campfire' ? '篝火' : recipe.station === 'furnace' ? '熔炉' : '工作台'}` };
     }
     const cost = this.discountedCost(recipe);
     for (const [id, n] of Object.entries(cost)) {

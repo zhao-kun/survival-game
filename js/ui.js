@@ -703,8 +703,8 @@ export class UI {
         return `<span class="${have >= n ? '' : 'lack'}">${ITEMS[id].name} ${have}/${n}</span>`;
       }).join('、');
       const station = recipe.station
-        ? `<span class="station">[${recipe.station === 'campfire' ? '篝火' : '熔炉'}]</span>` : '';
-      const lock = recipe.needUnlock && !ok && reason.includes('蓝图')
+        ? `<span class="station">[${recipe.station === 'campfire' ? '篝火' : recipe.station === 'furnace' ? '熔炉' : '工作台'}]</span>` : '';
+      const lock = (recipe.needUnlock || recipe.unlock) && !ok   // M8：v2 配方熟练度锁定同样标 🔒
         ? `<span class="lack">🔒</span>` : '';
       return `<div class="recipe">
         <div class="r-icon">${this.iconHTML(item)}</div>

@@ -341,6 +341,8 @@ export const RECIPES = [
   { out: 'mod_armor', n: 1, cost: { iron_ingot: 2, coal: 1 },  station: 'furnace' },
   { out: 'mod_pack',  n: 1, cost: { iron_ingot: 2, coal: 1 },  station: 'furnace' },
   { out: 'mod_crit',  n: 1, cost: { steel_ingot: 1, coal: 1 }, station: 'furnace' },
+  // —— M8：钢锭熔炉配方（铁锭×2 + 煤）——
+  { out: 'steel_ingot', n: 1, cost: { iron_ingot: 2, coal: 1 }, station: 'furnace', time: 4 },
   { out: 'mod_scope', n: 1, cost: { steel_ingot: 1, coal: 1 }, station: 'furnace' },
   { out: 'mod_scav',  n: 1, cost: { steel_ingot: 1, coal: 2 }, station: 'furnace' },
 ];
@@ -574,3 +576,36 @@ ITEMS.steel_ingot = {
   name: '钢锭', icon: '钢', color: 0x7e8fa0, css: '#7e8fa0', kind: 'material', stack: 64,
   desc: '钢制武器/护甲原料（熔炉：铁锭×2 + 煤）',
 };
+
+// ---------- M8：v2 武器/护甲配方（工作台，熟练度解锁） ----------
+// 武器：石质 圆石 n+2 + 木棍 2；铁质 铁锭 n+1 + 木棍 2；钢制 钢锭 n + 木棍 1（设计 3.4）
+for (const c of W_CLASSES) {
+  for (const mat of W_TIER_ORDER) {
+    for (let lv = 1; lv <= 6; lv++) {
+      const n = mat === 'stone' ? lv + 2 : mat === 'iron' ? lv + 1 : lv;
+      const core = mat === 'stone' ? { stone: n } : mat === 'iron' ? { iron_ingot: n } : { steel_ingot: n };
+      RECIPES.push({
+        out: `${mat}_${c.key}_l${lv}`, n: 1,
+        cost: { ...core, stick: mat === 'steel' ? 1 : 2 },
+        station: 'workbench',
+        time: c.group === 'melee' ? 2 + 0.2 * lv : 3 + 0.3 * lv,
+        unlock: { cls: c.key, mat, lv },   // 熟练度解锁（crafting.check 拦截）
+      });
+    }
+  }
+}
+// 护甲：材料 + 布料 2（熟练度不限制，走 M6 材质门槛：铁质需 ironWeapon/钢制需钢锭）
+for (const s of ARMOR_SLOTS) {
+  for (const mat of W_TIER_ORDER) {
+    for (let lv = 1; lv <= 6; lv++) {
+      const n = mat === 'stone' ? lv + 2 : mat === 'iron' ? lv + 1 : lv;
+      const core = mat === 'stone' ? { stone: n } : mat === 'iron' ? { iron_ingot: n } : { steel_ingot: n };
+      RECIPES.push({
+        out: `${mat}_armor_${s.key}_l${lv}`, n: 1,
+        cost: { ...core, cloth: 2 },
+        station: 'workbench',
+        time: 2 + 0.2 * lv,
+      });
+    }
+  }
+}

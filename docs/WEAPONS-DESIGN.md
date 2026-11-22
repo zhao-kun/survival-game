@@ -212,7 +212,7 @@ lvl     = gi % 6 + 1                // 1..6
 | **M5** | 远程分级 | 实体加 headH（僵尸 1.45/猪 0.85）+ takeDamage 第三参 opts.noAggro（弓隐蔽仅抑 aggro/猪逃窜）；Projectile 携带武器信息（wcls/wlv）：头部命中点 y>pos.y+headH ×1.5、弓流血 1.5+0.3lv/3s、弩重伤 3+0.5lv/5s、弓 12m 外不 aggro（潜行狙击 toast）；tryShoot 加 itemId+解锁限制+opts 传递；旧 v1 弓弩不限 | ranged-fx (8945)：10/10 两连过（解锁拦截/弓弩流血/头部×1.5/隐蔽 12m/猪头线/信息传递/流血取强）+ 全量回归绿 | ✅ 已完成（2026-02） |
 | **M6** | 护甲系统 | damage 新公式 A/(A+30) 上限75%（仅 zombie 源）；equipFromInv 支持 kind='armor'+材质门槛（铁质需 flags.ironWeapon 合成铁武器置位/钢制需持有钢锭）；flags 存档；UI 面板减伤百分比同步新公式；旧 kind='equip' 护甲兼容 | armor-sys (8946)：9/9 两连过（曲线 A=10/30/60、坠落不受甲、四件装配 10 点/25%、双门槛、craft 置位、旧护甲、存档、UI）+ 全量回归绿（smoke 旧断言同步新公式） | ✅ 已完成（2026-02） |
 | **M7** | 插件扩充 | 6 新插件（clsReq 类别约束：stun/aoe→锤、pierce/cripple→枪、bleed→刀弓弩、head→全）+ instMods 6 新字段 + applyMeleeFx 全特技接入（bleedMul×1.25/stunAdd+10%/headAdd+6%/crippleAdd+12%/aoeAdd+0.6m/pierceAdd+1）+ Projectile 接 bleedMul/headAdd + ZOMBIE_LOOT 池扩充 + 6 条工作台配方（铁锭×2+煤） | plugins-v2 (8947)：10/10 两连过（适配矩阵/instMods/AOE半径/流血/爆头/穿透/致残震慢/远程插件/掉落配方）+ 全量回归绿 | ✅ 已完成（2026-02） |
-| **M8** | 整合与平衡 | 工作台锁定 UI + 配方材料表 + 钢锭熔炼 + 存档兼容 + 数值平衡过一遍（僵尸 TTK 曲线） | weapons-e2e (8948)：全链路（打怪→掉书→研读→解锁→合成→穿戴→实战）+ 全量回归 | ⬜ |
+| **M8** | 整合与平衡 | 180 条 v2 配方生成（武器 108：石圆石n+2+棍2/铁铁锡n+1+棍2/钢钢锡n+棍1，护甲 72：材料+布料2，全工作台，武器带 unlock 熟练度门槛）；钢锭熔炉配方（铁锡×2+煤）；crafting.check 熟练度拦截+reason（还差几本）；nearStation 支持 workbench；time 覆盖链修复（CRAFT_TIME ?? 自带 ?? 5）；UI 锁定 🔒/三档站名；TTK 平衡（石1 vs 钢6 同级僵尸 TTK 比值 5.56，3.5 倍伤害成长合理） | weapons-e2e (8948)：12/12 两连过（掉书→研读→解锁→合成→穿戴→实战全链路+钢锭熔炼+TTK+存档兼容）+ 全量回归绿（smoke/e2e/M1-M7/容器/工作台/篝火/铁链/音效/TPS/save 全绿） | ✅ 已完成（2026-02） |
 
 **预计节奏**：M1–M2 一次交付；M3–M4 一次；M5–M6 一次；M7–M8 一次（共 4 轮，每轮跑全量回归）。
 
