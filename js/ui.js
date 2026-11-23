@@ -15,6 +15,7 @@ export class UI {
     this.craftTimer = 0;
     this.vignetteOpacity = 0;
     this.mobHudSig = null;
+    this.craftLv = {};   // M8：制作面板分组等级选择 { 'w:knife:stone': 1..6 }
 
     this.el = {
       barHp: $('bar-hp'), textHp: $('text-hp'), barHunger: $('bar-hunger'), barThirst: $('bar-thirst'), fxRow: $('fx-row'),
@@ -694,32 +695,88 @@ export class UI {
     this.updateEquipStats();
   }
 
+  // M8：制作列表分组渲染 —— v2 武器/护甲一类别一格（箭头切等级），普通配方原样罗列
   updateCraftPanel() {
     const g = this.game;
-    const rows = g.crafting.listStatus().map(({ recipe, ok, reason, cost }, i) => {
+    const gmap = new Map();   // key -> { kind, cls/slot, mat, lv:{1..6: status} }
+    const plain = [];
+    for (const st of g.crafting.listStatus()) {
+      const out = st.recipe.out ?? '';
+      const w = out.match(/^(stone|iron|steel)_(knife|hammer|club|spear|bow|crossbow)_l([1-6])$/);
+      const a = out.match(/^(stone|iron|steel)_armor_(helm|chest|legs|boots)_l([1-6])$/);
+      if (w) {
+        const key = `w:${w[2]}:${w[1]}`;
+        if (!gmap.has(key)) gmap.set(key, { kind: 'w', cls: w[2], mat: w[1], lv: {} });
+        gmap.get(key).lv[+w[3]] = st;
+      } else if (a) {   // 护甲正则：a[1]=材质 a[2]=部位 a[3]=等级（'armor' 是字面量非捕获组）
+        const key = `a:${a[2]}:${a[1]}`;
+        if (!gmap.has(key)) gmap.set(key, { kind: 'a', slot: a[2], mat: a[1], lv: {} });
+        gmap.get(key).lv[+a[3]] = st;
+      } else plain.push(st);
+    }
+    const needHtml = (cost, recipe) => Object.entries(cost ?? recipe.cost).map(([id, n]) => {
+      const have = g.inventory.countOf(id);
+      return `<span class="${have >= n ? '' : 'lack'}">${ITEMS[id].name} ${have}/${n}</span>`;
+    }).join('、');
+    const stationTag = r => r.station
+      ? `<span class="station">[${r.station === 'campfire' ? '篝火' : r.station === 'furnace' ? '熔炉' : '工作台'}]</span>` : '';
+    const rows = [];
+    // 普通配方：原样罗列（可合成=绿边 / 不可=黄边）
+    for (const { recipe, ok, reason, cost } of plain) {
       const item = ITEMS[recipe.out];
-      const needs = Object.entries(cost ?? recipe.cost).map(([id, n]) => {
-        const have = g.inventory.countOf(id);
-        return `<span class="${have >= n ? '' : 'lack'}">${ITEMS[id].name} ${have}/${n}</span>`;
-      }).join('、');
-      const station = recipe.station
-        ? `<span class="station">[${recipe.station === 'campfire' ? '篝火' : recipe.station === 'furnace' ? '熔炉' : '工作台'}]</span>` : '';
-      const lock = (recipe.needUnlock || recipe.unlock) && !ok   // M8：v2 配方熟练度锁定同样标 🔒
-        ? `<span class="lack">🔒</span>` : '';
-      return `<div class="recipe">
+      const lock = (recipe.needUnlock || recipe.unlock) && !ok ? `<span class="lack">🔒</span>` : '';
+      rows.push(`<div class="recipe ${ok ? 'can' : 'lackmat'}">
         <div class="r-icon">${this.iconHTML(item)}</div>
         <div class="r-main">
           <div class="r-name">${item.name} ×${recipe.n} ${lock}</div>
-          <div class="r-need">${station}${needs}${ok ? '' : ` — <span class="lack">${reason}</span>`}</div>
+          <div class="r-need">${stationTag(recipe)}${needHtml(cost, recipe)}${ok ? '' : ` — <span class="lack">${reason}</span>`}</div>
         </div>
-        <button data-r="${i}" ${ok ? '' : 'disabled'}>合成</button>
-      </div>`;
-    });
+        <button data-r="${g.crafting.recipes.indexOf(recipe)}" ${ok ? '' : 'disabled'}>合成</button>
+      </div>`);
+    }
+    // v2 武器/护甲：一类别一格；等级 ‹ L# › 切换；锁定状态用颜色/水印/圆点区分
+    for (const grp of gmap.values()) {
+      const key = grp.kind === 'w' ? `w:${grp.cls}:${grp.mat}` : `a:${grp.slot}:${grp.mat}`;
+      const lv = Math.min(6, Math.max(1, this.craftLv[key] ?? 1));
+      const st = grp.lv[lv];
+      const item = ITEMS[st.recipe.out];
+      const { ok, reason } = st;
+      // 视觉分级：ok=绿；熟练度/材质门槛锁=灰暗红锁水印（直接读配方数据判定，不依赖 check reason 顺序）；仅缺材料/工作站=黄
+      const mlock = !ok && (() => {
+        if (st.recipe.unlock) return !g.mastery.isUnlocked(st.recipe.unlock.cls, st.recipe.unlock.mat, st.recipe.unlock.lv);
+        const m = (st.recipe.out ?? '').match(/^(stone|iron|steel)_armor_/);
+        if (m) {
+          if (m[1] === 'iron') return !g.flags?.ironWeapon;
+          if (m[1] === 'steel') return g.inventory.countOf('steel_ingot') < 1;
+        }
+        return false;
+      })();
+      const cls = ok ? 'can' : mlock ? 'mlock' : 'lackmat';
+      const unlocked = Object.entries(grp.lv).filter(([, s]) => s.ok).map(([l]) => +l);
+      const dots = [1, 2, 3, 4, 5, 6].map(l =>
+        `<i class="lv-dot${unlocked.includes(l) ? ' on' : ''}${l === lv ? ' cur' : ''}"></i>`).join('');
+      rows.push(`<div class="recipe grp ${cls}">
+        <div class="r-icon">${this.iconHTML(item)}</div>
+        <div class="r-main">
+          <div class="r-name">${item.name} <span class="lv-ctl"><button class="lv-btn" data-d="-1" data-key="${key}">‹</button><b>L${lv}</b><button class="lv-btn" data-d="1" data-key="${key}">›</button></span>${dots}${!ok && mlock ? '<span class="r-lock">🔒</span>' : ''}</div>
+          <div class="r-need">${stationTag(st.recipe)}${needHtml(st.cost, st.recipe)}${ok ? '' : ` — <span class="lack">${reason}</span>`}</div>
+        </div>
+        <button data-r="${g.crafting.recipes.indexOf(st.recipe)}" ${ok ? '' : 'disabled'}>合成</button>
+      </div>`);
+    }
     this.el.craftList.innerHTML = rows.join('');
   }
 
   bindCraft() {
     this.el.craftList.addEventListener('click', (e) => {
+      const lvBtn = e.target.closest('.lv-btn');   // M8：等级箭头优先处理，不触发合成
+      if (lvBtn) {
+        const key = lvBtn.dataset.key;
+        const cur = this.craftLv[key] ?? 1;
+        this.craftLv[key] = Math.min(6, Math.max(1, cur + +lvBtn.dataset.d));
+        this.updateCraftPanel();
+        return;
+      }
       const btn = e.target.closest('button');
       if (!btn || btn.disabled) return;
       const r = this.game.crafting.recipes[+btn.dataset.r];
