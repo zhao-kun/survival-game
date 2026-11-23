@@ -248,6 +248,10 @@ export class Player {
     this.hp -= amount;
     this.game.sfx?.hurt();   // 玩家受伤下滑音
     this.game.ui.flashDamage();
+    // M8 验收：受伤浮动文字——护甲减伤时变灰并带减伤百分比
+    const armorPct = source === 'zombie' && this.armor > 0
+      ? Math.round(Math.min(0.75, this.armor / (this.armor + 30)) * 100) : 0;
+    this.game.ui.showHurtFloat?.(amount, armorPct);
     this.game.ui.dirtyVitals = true;
     if (this.hp <= 0) {
       this.hp = 0;

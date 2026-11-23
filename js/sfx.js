@@ -139,6 +139,14 @@ export class Sfx {
     this.play('crit', () => { this._tone('square', 260, 120, 0.1, 0.5); this._tone('sine', 1560, 1560, 0.09, 0.3, 0.03); this._burst(0.07, 0.45, 'lowpass', 900); });
   }
 
+  decap() {   // 断头斩杀：低沉重斩 + 高频破空哨音（专属反馈，区别于通用暴击）
+    this.play('decap', () => {
+      this._tone('sawtooth', 110, 40, 0.22, 0.5);
+      this._burst(0.12, 0.55, 'lowpass', 500);
+      this._tone('sine', 2100, 400, 0.16, 0.3, 0.04);
+    });
+  }
+
   hurt() {   // 玩家受伤：下滑锯齿
     this.play('hurt', () => { this._tone('sawtooth', 320, 130, 0.18, 0.4); this._burst(0.1, 0.25, 'lowpass', 400); });
   }

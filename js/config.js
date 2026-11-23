@@ -469,6 +469,16 @@ export const W_TIER = {
 export const W_TIER_ORDER = ['stone', 'iron', 'steel'];
 
 // ---------- 六类武器基准（damage=base×mul×(1+(lv-1)×0.08)；rate 每级 -rateStep，下限 0.3） ----------
+// M9：武器特技说明（tooltip/制作列表展示）
+export const WEAPON_TRAIT_TXT = {
+  knife:    '特技：概率流血（3s）· 斩杀判定触发断头一击',
+  hammer:   '特技：震地 AOE 波及扇形内其他敌人并减速',
+  club:     '特技：击飞目标 · 爆头伤害翻三倍',
+  spear:    '特技：直线贯穿多个目标 · 致残减速',
+  bow:      '特技：流血箭 · 12m 外命中不惊动目标（潜行狙击）',
+  crossbow: '特技：重伤出血（5s）· 直线贯穿',
+};
+
 export const W_CLASSES = [
   { key: 'knife',    cn: '刀', icon: '刀', group: 'melee',  dmg: 12, rate: 0.50, rateStep: 0.028, knock: 0.8, reach: 2.6 },
   { key: 'hammer',   cn: '锤', icon: '锤', group: 'melee',  dmg: 18, rate: 1.25, rateStep: 0.046, knock: 2.4, reach: 2.8 },
@@ -536,14 +546,18 @@ for (const c of W_CLASSES) {
     const t = W_TIER[mat];
     for (let lv = 1; lv <= 6; lv++) {
       const id = `${mat}_${c.key}_l${lv}`;
+      const dmg = Math.round(c.dmg * t.mul * (1 + (lv - 1) * 0.08) * 10) / 10;
+      const rt = Math.max(0.3, Math.round((c.rate - (lv - 1) * c.rateStep) * 100) / 100);
       ITEMS[id] = {
         name: `${t.name}${lv}级${c.cn}`, icon: c.icon, color: t.color, css: t.css,
         kind: c.group, stack: 1, tier: mat, lv, cls: c.key,
-        damage: Math.round(c.dmg * t.mul * (1 + (lv - 1) * 0.08) * 10) / 10,
-        rate: Math.max(0.3, Math.round((c.rate - (lv - 1) * c.rateStep) * 100) / 100),
+        damage: dmg,
+        rate: rt,
         knock: c.knock, reach: c.reach,
         ...(c.ammo ? { ammo: c.ammo } : {}),
-        desc: `${c.group === 'melee' ? '近战' : '远程'}·${t.name}质 ${lv} 级${c.cn}`,
+        desc: `${c.group === 'melee' ? '近战' : '远程'}·伤害 ${dmg} · 攻击间隔 ${rt}s`
+          + (c.ammo ? ` · 消耗${c.ammo === 'arrow' ? '箭矢' : '弩箭'}` : '')
+          + `\n${WEAPON_TRAIT_TXT[c.key]}`,
       };
     }
   }
@@ -576,6 +590,63 @@ ITEMS.steel_ingot = {
   name: '钢锭', icon: '钢', color: 0x7e8fa0, css: '#7e8fa0', kind: 'material', stack: 64,
   desc: '钢制武器/护甲原料（熔炉：铁锭×2 + 煤）',
 };
+
+// ---------- M9：物品功效说明补全（悬停 tooltip 数据源） ----------
+const ARMOR_SLOT_CN = { head: '头部', chest: '躯干', legs: '腿部', boots: '脚部' };
+for (const id of ['leather_helm', 'iron_helm', 'steel_helm', 'leather_vest', 'iron_chest', 'steel_chest', 'leather_pants', 'iron_pants', 'steel_pants', 'leather_boots', 'iron_boots', 'steel_boots', 'leather_armor']) {
+  const it = ITEMS[id], pct = Math.round(it.armor / (it.armor + ARMOR_REDUCE) * 100);
+  it.desc = `${ARMOR_SLOT_CN[it.equip]}护甲·护甲值 ${it.armor}（受伤 -${pct}%）`
+    + (it.sockets ? ` · 插件槽 ${it.sockets}` : '');
+}
+const TOOL_DESC = {
+  sword:   d => `近战武器·伤害 ${d.damage} · 攻击间隔 ${d.rate}s（均衡型）`,
+  pickaxe: d => `工具/武器·伤害 ${d.damage} · 挖掘石头与矿石更快`,
+  axe:     d => `工具/武器·伤害 ${d.damage} · 砍树采集原木更快`,
+  shovel:  d => `工具/武器·伤害 ${d.damage} · 挖掘泥土沙子更快`,
+  hammer:  d => `近战武器·伤害 ${d.damage} · 攻击间隔 ${d.rate}s（慢速高伤）`,
+  club:    d => `近战武器·伤害 ${d.damage} · 击退强（廉价过渡）`,
+  knife:   d => `近战武器·伤害 ${d.damage} · 攻速极快（割裂流）`,
+};
+for (const id of Object.keys(ITEMS)) {
+  const m = id.match(/^(wood|iron|steel)_(sword|pickaxe|axe|shovel|hammer|club|knife)$/);
+  if (m) ITEMS[id].desc = TOOL_DESC[m[2]](ITEMS[id]);
+}
+const DESC_PATCH = {
+  log: '原木 · 砍树获得；木板/木棍原料，可作燃料',
+  plank: '木板 · 建筑材料；工作台/篝火等木制品原料',
+  stick: '木棍 · 几乎所有工具与武器的手柄材料',
+  stone: '石头 · 石质工具/武器原料，可搭建熔炉/石制建筑',
+  dirt: '泥土 · 挖掘地表获得，可填坑搭路',
+  sand: '沙子 · 河边沙滩采集；熔炼成玻璃的原料',
+  coal: '煤 · 熔炉/篝火燃料（燃烧时间最长）',
+  iron_ore: '铁矿石 · 石镐开采；熔炉熔炼成铁锭',
+  iron_ingot: '铁锭 · 铁质工具/武器/护甲的通用原料',
+  glass: '玻璃 · 沙子熔炼而成；透明方块，也是玻璃瓶原料',
+  leather: '皮革 · 猎杀动物剥取；皮甲/背包/绷带材料',
+  bone: '骨头 · 僵尸掉落；胶水与骨器原料',
+  cloth: '布料 · 护甲衬料与绷带材料',
+  fiber: '植物纤维 · 采集草丛获得；布料与线的原料',
+  thread: '线 · 纤维捻成；缝制高级装备所需',
+  glue: '胶水 · 骨头熬制；粘合插件与装备的辅料',
+  iron_wire: '铁线 · 铁锭拉丝；弩与机械的必需件',
+  workbench: '工作台 · 放置后靠近可解锁全部高级配方',
+  campfire: '篝火 · 放置后可烤肉/照明/取暖（需燃料）',
+  furnace: '熔炉 · 放置后可熔炼矿石/烧制玻璃（需燃料）',
+  raw_meat: '生肉 · 直接吃可能腹泻；篝火烤成熟肉更佳',
+  berry: '浆果 · 少量充饥并补充水分',
+  bottle_empty: '空瓶 · 在水边右键装水（脏水需煮沸）',
+  bottle_dirty: '脏水 · 直接喝可能腹泻；篝火煮沸后变净水',
+  bottle_clean: '净水 · 安全饮用水，恢复大量水分',
+  cup_dirty: '脏水杯 · 直接喝可能腹泻；煮沸后可用',
+  cup_clean: '净水杯 · 安全饮用水',
+  arrow: '箭矢 · 弓的弹药（射出后有概率可拾回）',
+  bolt: '弩箭 · 弩的弹药（单发伤害高于弓）',
+  pack_canvas: '帆布背包 · 装备后背包格数 +6，带 1 个插件槽（皮革×5+线×2 制作）',
+  pack_explorer: '探险背包 · 高级背包：背包格数 +12，带 2 个插件槽（皮甲级材料制作）',
+  bow: '远程武器·伤害 15 · 拉弓射击消耗箭矢；12m 外命中不惊动目标',
+  crossbow: '远程武器·伤害 26 · 装填慢但单发伤害远高于弓；重伤出血',
+};
+for (const [id, d] of Object.entries(DESC_PATCH)) if (ITEMS[id]) ITEMS[id].desc = d;
 
 // ---------- M8：v2 武器/护甲配方（工作台，熟练度解锁） ----------
 // 武器：石质 圆石 n+2 + 木棍 2；铁质 铁锭 n+1 + 木棍 2；钢制 钢锭 n + 木棍 1（设计 3.4）

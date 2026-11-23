@@ -81,6 +81,7 @@ export function buildHeldItem(itemId) {
     else if (it.icon === '镐') { const head = addBox(g, 0.4, 0.05, 0.06, tierColor, 0, 0.06, -0.3); head.rotation.z = Math.PI / 2; head.rotation.y = Math.PI / 4; }
     else if (it.icon === '棍') { g.clear(); addBox(g, 0.09, 0.09, 0.72, tierColor, 0, 0, -0.2); }
     else if (it.icon === '刀') { addBox(g, 0.04, 0.11, 0.34, tierColor, 0, 0.02, -0.38); }
+    else if (it.icon === '枪') { addBox(g, 0.05, 0.05, 0.18, tierColor, 0, 0.02, -0.44); addBox(g, 0.02, 0.14, 0.05, tierColor, 0, 0.09, -0.36); }   // M8：矛头+侧刃
   } else if (it.kind === 'ranged') {
     addBox(g, 0.04, 0.5, 0.05, color, 0, 0, -0.15);
     addBox(g, 0.03, 0.03, 0.5, 0xdddddd, 0, 0, -0.15);

@@ -1,7 +1,7 @@
 // ============================================================
 // ui.js —— HUD / 背包 / 合成 / 技能树 / 提示 / 死亡界面
 // ============================================================
-import { ITEMS, EFFECTS, SKILL_TREE, pluginFits, hostTargetName, ZOMBIE_CFG, BOOKS, W_TIER } from './config.js';
+import { ITEMS, EFFECTS, SKILL_TREE, pluginFits, hostTargetName, ZOMBIE_CFG, BOOKS, W_TIER, W_CLASSES, BLOCK } from './config.js';
 import { EQUIP_SLOTS } from './player.js';
 import { STATION_RECIPES, FUEL } from './stations.js';
 
@@ -23,7 +23,7 @@ export class UI {
       craftBar: $('craft-bar'), craftIcon: $('craft-icon'), craftLabel: $('craft-label'),
       craftFill: $('craft-fill'), craftRemain: $('craft-remain'),
       xpBar: $('xp-bar'), xpText: $('xp-text'), hotbar: $('hotbar'), toasts: $('toasts'),
-      vignette: $('damage-vignette'), warning: $('zombie-warning'),
+      vignette: $('damage-vignette'), warning: $('zombie-warning'), hurtFloat: $('hurt-float-layer'), tip: $('tooltip'),
       panelInv: $('panel-inventory'), invGrid: $('inv-grid'), craftList: $('craft-list'),
       panelPack: $('panel-backpack'), packGrid: $('pack-grid'), bar2Grid: $('bar2-grid'),
       equipGrid: $('equip-grid'), equipStats: $('equip-stats'),
@@ -44,6 +44,10 @@ export class UI {
     this.bindStation();
     this.pendingPlugin = null;   // 待安装的插件 id（点击插件后标记）
     this.stationPos = null;      // 当前打开的容器坐标 {x,y,z,type}
+    // M9：物品功效悬停说明（tooltip）
+    this.tip = null;             // 当前悬停的物品 id（帧重建后仍可重渲染）
+    this.tipMouse = { x: 0, y: 0 };
+    this.bindTooltip();
   }
 
   // ---------------- 篝火/熔炉容器面板 ----------------
@@ -311,6 +315,100 @@ export class UI {
     this.vignetteOpacity = 0.9;
   }
 
+  // ---------------- M9：物品功效悬停说明 ----------------
+  // 事件委托：鼠标悬停背包/装备/制作列表/插件槽时记录物品 id；每帧 updateTip 重渲染（面板帧重建不闪）
+  bindTooltip() {
+    const SEL = '[data-iid], .slot[data-idx], .equip-slot[data-slot], [data-r], .socket[data-s]';
+    document.addEventListener('mouseover', (e) => {
+      const hit = e.target.closest(SEL);
+      this.tip = hit ? this.tipItemAt(hit) : null;
+      if (hit) { this.tipMouse = { x: e.clientX, y: e.clientY }; }
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (this.tip) { this.tipMouse = { x: e.clientX, y: e.clientY }; }
+    });
+  }
+
+  // 从悬停元素解析物品 id（背包格/装备位/制作列表成品/插件槽）
+  tipItemAt(el) {
+    const inv = this.game.inventory;
+    if (el.dataset.r !== undefined) {   // 制作列表合成按钮：显示成品说明（携带配方以便熟练度锁提示）
+      const recipe = this.game.crafting.recipes[+el.dataset.r];
+      return recipe ? { id: recipe.out, recipe } : null;
+    }
+    if (el.classList.contains('socket')) {   // 插件槽：显示已安装插件
+      const key = el.closest('.equip-slot')?.dataset.slot;
+      const inst = key ? this.game.player.equipment[key] : null;
+      const pid = inst?.mods?.[+el.dataset.s] ?? null;
+      return pid ? { id: pid } : null;
+    }
+    if (el.classList.contains('equip-slot')) {   // 装备位
+      return { id: this.game.player.equipment[el.dataset.slot]?.id ?? null };
+    }
+    if (el.classList.contains('recipe')) {   // 制作列表：显示成品说明
+      return this.game.crafting.recipes[+el.dataset.r]?.out ?? null;
+    }
+    if (el.classList.contains('slot')) {   // 快捷栏/背包/行囊/容器输入格（均为 inventory.slots[idx]）
+      const pid = inv.slots[+el.dataset.idx]?.id ?? null;
+      return pid ? { id: pid } : null;
+    }
+    const iid = el.dataset.iid;
+    return iid ? { id: iid } : null;
+  }
+
+  // 物品详情卡：名称/类别/数值行/功效描述
+  tipHTML(id, recipe = null) {
+    const it = ITEMS[id];
+    if (!it) return '';
+    const KIND_CN = { melee: '近战武器', ranged: '远程武器', armor: '护甲', equip: '装备', plugin: '插件', medical: '医疗品', book: '技能书', plan: '图纸', material: '材料' };
+    const BLOCK_CN = { [BLOCK.CAMPFIRE]: '可放置 · 篝火', [BLOCK.FURNACE]: '可放置 · 熔炉', [BLOCK.WORKBENCH]: '可放置 · 工作台' };
+    const kind = it.block ? (BLOCK_CN[it.block] ?? '可放置方块') : (KIND_CN[it.kind] ?? (it.food ? '消耗品' : '物品'));
+    let stats = '';
+    if (it.damage) stats += `<div class="t-row">⚔️ 伤害 <b>${it.damage}</b>${it.rate ? ` · 攻击间隔 ${it.rate}s` : ''}</div>`;
+    if (it.ammo) stats += `<div class="t-row">🏹 弹药：${it.ammo === 'arrow' ? '箭矢' : '弩箭'}</div>`;
+    if (it.armor) stats += `<div class="t-row">🛡 护甲值 <b>${it.armor}</b>（受伤 -${Math.round(it.armor / (it.armor + 30) * 100)}%）</div>`;
+    if (it.pack) stats += `<div class="t-row">🎒 背包格数 <b>+${it.pack}</b></div>`;
+    if (it.sockets) stats += `<div class="t-row">⚙️ 插件槽 ×${it.sockets}</div>`;
+    if (it.food) {
+      const f = it.food, seg = [];
+      if (f.hunger) seg.push(`🥩饱食 +${f.hunger}`); if (f.thirst) seg.push(`💧水分 +${f.thirst}`); if (f.health) seg.push(`❤️生命 +${f.health}`);
+      if (seg.length) stats += `<div class="t-row">${seg.join(' · ')}</div>`;
+    }
+    const u = recipe?.unlock ?? null;
+    if (u) stats += `<div class="t-row dim">🔒 需 ${W_TIER[u.mat].name}${u.lv} 级${(W_CLASSES.find(c => c.key === u.cls)?.cn) ?? u.cls}熟练度（研读书谱解锁）</div>`;
+    return `<div class="t-name" style="color:${it.css ?? '#fff'}">${it.name}</div>`
+      + `<div class="t-kind">${kind}</div>${stats}`
+      + (it.desc ? `<div class="t-desc">${it.desc}</div>` : '');
+  }
+
+  // 每帧刷新 tooltip 内容与位置（跟随鼠标，防出屏）
+  updateTip() {
+    const t = this.el.tip;
+    if (!t) return;
+    if (!this.tip) { t.classList.add('hidden'); return; }
+    const html = this.tipHTML(this.tip.id, this.tip.recipe);
+    if (!html) { t.classList.add('hidden'); return; }
+    t.innerHTML = html;
+    t.classList.remove('hidden');
+    const x = Math.min(this.tipMouse.x + 14, window.innerWidth - 280);
+    const y = Math.min(this.tipMouse.y + 16, window.innerHeight - t.offsetHeight - 12);
+    t.style.left = `${Math.max(8, x)}px`;
+    t.style.top = `${Math.max(8, y)}px`;
+  }
+
+  // M8 验收：受伤浮动文字 —— 无护甲红色「-N」，有护甲变灰「-N 🛡P%」（P=减伤百分比）
+  showHurtFloat(dmg, reducePct = 0) {
+    const layer = this.el.hurtFloat ?? document.getElementById('hurt-float-layer');
+    if (!layer) return;
+    const d = document.createElement('div');
+    d.className = 'hurt-float' + (reducePct > 0 ? ' armored' : '');
+    d.textContent = reducePct > 0 ? `-${Math.round(dmg)} 🛡${reducePct}%` : `-${Math.round(dmg)}`;
+    d.style.left = `${44 + Math.random() * 12}%`;
+    d.style.top = `${40 + Math.random() * 10}%`;
+    layer.appendChild(d);
+    setTimeout(() => d.remove(), 1100);
+  }
+
   updateMineProgress(data) {
     if (!data) { this.el.mineProgress.classList.add('hidden'); return; }
     this.el.mineProgress.classList.remove('hidden');
@@ -334,6 +432,7 @@ export class UI {
   update(dt) {
     const g = this.game;
     const p = g.player;
+    this.updateTip();   // M9：物品功效悬停说明
 
     // 容器面板开着 → 实时刷新（燃烧/进度/暂停状态）
     if (!this.el.panelStation.classList.contains('hidden')) this.updateStationPanel();

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { BLOCK, BLOCKS, ITEMS, GAMEPLAY, PLAN_GROUPS, BOOKS, W_TIER, weaponInfo } from './config.js';
 import { randRange, clamp } from './utils.js';
 import { MAT } from './sfx.js';
+import { spawnParticle } from './entities.js';
 
 export class Combat {
   constructor(game) {
@@ -126,6 +127,8 @@ export class Combat {
       main.applyStatus?.('bleed', 4, (2 + 0.4 * lv) * (1 + imB));   // M7 放血：流血 dps +25%
       if (Math.random() < 0.08 + 0.02 * lv + imH) {   // 断头：直接斩杀；M7 狩猎：概率 +6%
         main.takeDamage(9999, null);
+        g.sfx?.decap();   // M8 验收：专属断头音效
+        for (let i = 0; i < 5; i++) spawnParticle(g, main.pos.x, main.pos.y + 1.4, main.pos.z, 0xd0021b, 0.5);   // 颈部血粒迸溅
         g.ui.toast('🗡️ 断头一击！', '#ff5c5c');
         return true;
       }
@@ -147,6 +150,7 @@ export class Combat {
         if (c.length() > radius || c.normalize().dot(look) < cosHalf) continue;
         e.takeDamage(dmg * 0.6, look.clone().setY(0).normalize().multiplyScalar(1));
         if (Math.random() < 0.25 + 0.02 * lv + imS) e.applyStatus?.('slow', 2);
+        for (let i = 0; i < 3; i++) spawnParticle(g, e.pos.x, e.pos.y + 1.2, e.pos.z, 0xffd54a, 0.4);   // M8 验收：扇形波及金色尘粒
         n++;
       }
       if (n > 0) { g.ui.toast(`🔨 震地打击：波及 ${n} 个目标`, '#ffd54a'); return true; }
@@ -161,6 +165,7 @@ export class Combat {
         if (ahead <= 0) continue;
         if (v.clone().sub(look.clone().multiplyScalar(ahead)).length() > 0.9) continue;
         e.takeDamage(dmg * 0.7, look.clone().setY(0).normalize().multiplyScalar(1));
+        for (let i = 0; i < 2; i++) spawnParticle(g, e.pos.x, e.pos.y + 1.1, e.pos.z, 0x9dff6c, 0.35);   // M8 验收：贯穿点绿色标记粒
         n++;
       }
       if (n > 0) { g.ui.toast(`⚔️ 突穿：贯穿 ${n} 个目标`, '#ffd54a'); return true; }

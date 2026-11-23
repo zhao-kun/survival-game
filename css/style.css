@@ -8,6 +8,22 @@ body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif
 /* ================= HUD 通用 ================= */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 
+/* M9：物品功效悬停说明（跟随鼠标；品级色名称 + 类别 + 数值 + 功效描述） */
+#tooltip { position: fixed; z-index: 60; max-width: 268px; background: rgba(16,18,24,.95); border: 1px solid #4a5568; border-radius: 6px; padding: 8px 10px; pointer-events: none; font-size: 12px; line-height: 1.55; box-shadow: 0 4px 16px rgba(0,0,0,.55); }
+#tooltip.hidden { display: none; }
+#tooltip .t-name { font-size: 14px; font-weight: bold; }
+#tooltip .t-kind { color: #8fa3bf; font-size: 11px; margin-bottom: 2px; }
+#tooltip .t-row { color: #cfd8e6; }
+#tooltip .t-row b { color: #ffd54a; }
+#tooltip .t-desc { color: #a8b8cc; margin-top: 3px; white-space: pre-line; }
+#tooltip .dim { opacity: .75; }
+
+/* M8 验收：受伤浮动文字（上浮+淡出；有护甲时变灰带减伤百分比） */
+#hurt-float-layer { position: absolute; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; }
+.hurt-float { position: absolute; font-size: 24px; font-weight: bold; color: #ff5c5c; text-shadow: 0 1px 3px #000; animation: hurtFloat 1s ease-out forwards; }
+.hurt-float.armored { color: #9ab0c4; }
+@keyframes hurtFloat { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-52px); opacity: 0; } }
+
 /* 左上状态条 */
 #vitals { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 6px; }
 .bar-row { display: flex; align-items: center; gap: 6px; }
