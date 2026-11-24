@@ -2,7 +2,7 @@
 // entities.js —— 僵尸 / 动物 / 掉落物 / 箭矢 / 实体管理器
 // ============================================================
 import * as THREE from 'three';
-import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL } from './config.js';
+import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL, ENEMY_CFG, enemyStats, pickJob } from './config.js';
 import { buildHumanoid, buildItemCube } from './models.js';
 import { randRange, randInt, clamp } from './utils.js';
 
@@ -76,11 +76,15 @@ function hpBarColor(e) {
 // 僵尸
 // ------------------------------------------------------------
 export class Zombie {
-  constructor(game, level, x, y, z) {
+  // E1：job 参数化 —— 缺省 'common' 全乘数 1.0，旧签名 new Zombie(g, level, x, y, z) 零破坏
+  constructor(game, level, x, y, z, job = 'common') {
     this.game = game;
-    this.level = level;
-    const cfg = ZOMBIE_CFG.LEVELS[level - 1];
+    this.level = level;          // 大级 tier：1 一般 / 2 疯狂 / 3 辐射
+    this.job = job;
+    const cfg = enemyStats(level, job);   // 15 变体最终数值 = TIER 基准 × JOB 乘数
     this.cfg = cfg;
+    this.armorPct = cfg.armorPct;         // 职业减伤（特种兵防弹插板）
+    this.elite = false;                   // E5 精英变体
     this.hp = cfg.hp;
     this.maxHp = cfg.hp;
     this.pos = new THREE.Vector3(x, y, z);
@@ -121,7 +125,8 @@ export class Zombie {
 
   takeDamage(dmg, knockDir, opts = null) {
     if (this.dead) return;
-    this.hp -= dmg;
+    // E1：职业减伤入口（armorPct，最低承伤 1）
+    this.hp -= Math.max(1, Math.round(dmg * (1 - this.armorPct)));
     if (!opts?.noAggro) this.aggro = true;   // M5 隐蔽：弓 12m 外不惊动
     this.flashT = 0.15;
     this.game.sfx?.hit();   // 受击音效
@@ -582,10 +587,11 @@ export class EntityManager {
     return null;
   }
 
-  spawnZombie(level) {
+  // E1：job 缺省按天数/昼夜自动抽职业（门槛+夜晚倾斜+归一化权重）
+  spawnZombie(level, job = null) {
     const pos = this.surfaceSpawnPos(ZOMBIE_CFG.MIN_DIST, ZOMBIE_CFG.MAX_DIST);
     if (!pos) return;
-    this.zombies.push(new Zombie(this.game, level, pos.x, pos.y, pos.z));
+    this.zombies.push(new Zombie(this.game, level, pos.x, pos.y, pos.z, job ?? pickJob(this.game.day, this.game.isNight)));
   }
 
   spawnAnimal() {

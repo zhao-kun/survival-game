@@ -439,6 +439,72 @@ export const ZOMBIE_LOOT = [
   { chance: 0.25, type: 'material', make: () => ({ id: 'cloth', n: 1 + Math.floor(Math.random() * 2) }) },   // 布料：绷带/缝纫原料
 ];
 
+// ---------- 敌人系统 v2：三大级 × 五职业（docs/ENEMIES-DESIGN.md E1） ----------
+// 大级 TIER = ZOMBIE_CFG.LEVELS（一般1/疯狂2/辐射3，攻防血速全面递增）；
+// 职业 JOB = 乘数 + 专属技能 + 掉落 + 权重，15 变体 = TIER 基准 × JOB 乘数
+export const ENEMY_CFG = {
+  JOBS: {
+    // common：兼容缺省（旧签名 new Zombie(g, level, x, y, z)），全乘数 1.0 不生成不参与权重
+    common:     { name: '普通僵尸', icon: '🧟', gender: 'm', hp: 1.00, dmg: 1.00, speed: 1.00, armorPct: 0,    xp: 1.00, weight: 0,    minDay: 1, loot: null,    skills: [] },
+    housewife:  { name: '家庭妇女', icon: '👩', gender: 'f', hp: 0.90, dmg: 0.85, speed: 1.05, armorPct: 0,    xp: 0.90, weight: 0.30, minDay: 1, loot: 'housewife',  skills: ['scream', 'spatula'] },
+    doctor:     { name: '医生',     icon: '👩‍⚕️', gender: 'f', hp: 0.95, dmg: 0.90, speed: 1.00, armorPct: 0,    xp: 1.00, weight: 0.15, minDay: 1, loot: 'doctor',     skills: ['heal', 'infect'] },
+    clerk:      { name: '文员',     icon: '🧔', gender: 'm', hp: 0.80, dmg: 0.80, speed: 1.10, armorPct: 0,    xp: 0.90, weight: 0.25, minDay: 1, loot: 'clerk',      skills: ['dodge', 'morale'] },
+    lumberjack: { name: '伐木工',   icon: '🪓', gender: 'm', hp: 1.35, dmg: 1.30, speed: 0.90, armorPct: 0,    xp: 1.30, weight: 0.20, minDay: 4, loot: 'lumberjack', skills: ['windup', 'armorbreak'] },
+    soldier:    { name: '特种兵',   icon: '🪖', gender: 'm', hp: 1.30, dmg: 1.25, speed: 1.00, armorPct: 0.25, xp: 1.50, weight: 0.10, minDay: 6, loot: 'soldier',    skills: ['plate', 'roll', 'shoot'] },
+  },
+  // 技能元数据声明（E3 实现行为，E1 仅数据）
+  SKILLS: {
+    scream:      { name: '尖叫召集', hook: 'onDamaged',  cd: 15, radius: 12 },
+    spatula:     { name: '锅铲连击', hook: 'onAttackHit', chance: 0.20, mul: 0.6 },
+    heal:        { name: '战地急救', hook: 'tick',       cd: 12, pct: 0.08, calm: 4 },
+    infect:      { name: '感染采样', hook: 'onAttackHit', slow: 3 },
+    dodge:       { name: '胆小侧闪', hook: 'onDamaged',  chance: 0.25, cd: 2, dist: 1.5 },
+    morale:      { name: '抱团士气', hook: 'tick',       radius: 4, dmg: 1.15, spd: 1.10, need: 2 },
+    windup:      { name: '蓄力劈砍', hook: 'onWindup',   t: 0.6, mul: 1.6, punish: 0.8 },
+    armorbreak:  { name: '破甲锤击', hook: 'onAttackHit', shred: 2, dur: 5, cap: 6 },
+    plate:       { name: '防弹插板', hook: 'passive',    headMul: 0.6 },
+    roll:        { name: '战术翻滚', hook: 'aimed',      chance: 0.30, cd: 3, dist: 2 },
+    shoot:       { name: '军规点射', hook: 'tick',       range: [4, 10], windup: 0.8, mul: 0.8, interval: 1.5, burst: 3, tierMin: 3 },
+  },
+  // 精英变体（E5 实现，数据位预留）
+  ELITE: { chance: 0.05, hp: 1.5, scale: 1.2, prefix: '狂暴' },
+  // 夜晚重职业倾斜（权重 ×N 后重新归一化）
+  NIGHT_BOOST: { lumberjack: 1.4, soldier: 1.4 },
+};
+
+// 变体最终数值：TIER 基准 × JOB 乘数（hp/dmg/xp 取整，speed 保留 2 位）
+export function enemyStats(tier, job = 'common') {
+  const base = ZOMBIE_CFG.LEVELS[Math.min(3, Math.max(1, tier)) - 1];
+  const J = ENEMY_CFG.JOBS[job] ?? ENEMY_CFG.JOBS.common;
+  return {
+    tier, job,
+    hp: Math.round(base.hp * J.hp),
+    damage: Math.round(base.damage * J.dmg),
+    speed: +(base.speed * J.speed).toFixed(2),
+    detect: base.detect,
+    scale: base.scale,
+    xp: Math.round(base.xp * J.xp),
+    armorPct: J.armorPct,
+    name: J.name, icon: J.icon, gender: J.gender,
+    loot: J.loot,
+    skills: J.skills,
+  };
+}
+
+// 职业抽取：minDay 门槛（未到权重 0）→ 夜晚重职业 ×NIGHT_BOOST → 归一化 → rand 落点
+export function pickJob(day, isNight, rand = Math.random) {
+  const entries = Object.entries(ENEMY_CFG.JOBS)
+    .filter(([key, J]) => J.weight > 0 && day >= J.minDay)
+    .map(([key, J]) => [key, J.weight * (isNight ? (ENEMY_CFG.NIGHT_BOOST[key] ?? 1) : 1)]);
+  const total = entries.reduce((s, [, w]) => s + w, 0);
+  let r = rand() * total;
+  for (const [key, w] of entries) {
+    if (r < w) return key;
+    r -= w;
+  }
+  return entries[entries.length - 1]?.[0] ?? 'common';
+}
+
 // 僵尸蓝图掉落概率（每次击杀；从未学会的图纸中随机抽一张）
 export const PLAN_DROP_CHANCE = 0.07;
 
