@@ -318,7 +318,7 @@ export class UI {
   // ---------------- M9：物品功效悬停说明 ----------------
   // 事件委托：鼠标悬停背包/装备/制作列表/插件槽时记录物品 id；每帧 updateTip 重渲染（面板帧重建不闪）
   bindTooltip() {
-    const SEL = '[data-iid], .slot[data-idx], .equip-slot[data-slot], [data-r], .socket[data-s]';
+    const SEL = '[data-iid], .slot[data-idx], .equip-slot[data-slot], [data-r], [data-recipe], .socket[data-s]';
     document.addEventListener('mouseover', (e) => {
       const hit = e.target.closest(SEL);
       this.tip = hit ? this.tipItemAt(hit) : null;
@@ -332,9 +332,13 @@ export class UI {
   // 从悬停元素解析物品 id（背包格/装备位/制作列表成品/插件槽）
   tipItemAt(el) {
     const inv = this.game.inventory;
-    if (el.dataset.r !== undefined) {   // 制作列表合成按钮：显示成品说明（携带配方以便熟练度锁提示）
+    if (el.dataset.r !== undefined) {   // 制作列表配方格/合成按钮：显示成品说明（携带配方以便熟练度锁提示）
       const recipe = this.game.crafting.recipes[+el.dataset.r];
       return recipe ? { id: recipe.out, recipe } : null;
+    }
+    if (el.dataset.recipe !== undefined) {   // 篝火/熔炉/工作台面板配方按钮
+      const sr = STATION_RECIPES.find(r => r.id === el.dataset.recipe);
+      return sr ? { id: sr.out } : null;
     }
     if (el.classList.contains('socket')) {   // 插件槽：显示已安装插件
       const key = el.closest('.equip-slot')?.dataset.slot;
@@ -824,7 +828,8 @@ export class UI {
     for (const { recipe, ok, reason, cost } of plain) {
       const item = ITEMS[recipe.out];
       const lock = (recipe.needUnlock || recipe.unlock) && !ok ? `<span class="lack">🔒</span>` : '';
-      rows.push(`<div class="recipe ${ok ? 'can' : 'lackmat'}">
+      // M9：格子本体挂 data-r —— 悬停整格即显示成品功效（不只合成按钮）
+      rows.push(`<div class="recipe ${ok ? 'can' : 'lackmat'}" data-r="${g.crafting.recipes.indexOf(recipe)}">
         <div class="r-icon">${this.iconHTML(item)}</div>
         <div class="r-main">
           <div class="r-name">${item.name} ×${recipe.n} ${lock}</div>
@@ -854,7 +859,8 @@ export class UI {
       const unlocked = Object.entries(grp.lv).filter(([, s]) => s.ok).map(([l]) => +l);
       const dots = [1, 2, 3, 4, 5, 6].map(l =>
         `<i class="lv-dot${unlocked.includes(l) ? ' on' : ''}${l === lv ? ' cur' : ''}"></i>`).join('');
-      rows.push(`<div class="recipe grp ${cls}">
+      // M9：分组格挂当前选中等级配方的 data-r —— 悬停整格即显示该等级成品功效
+      rows.push(`<div class="recipe grp ${cls}" data-r="${g.crafting.recipes.indexOf(st.recipe)}">
         <div class="r-icon">${this.iconHTML(item)}</div>
         <div class="r-main">
           <div class="r-name">${item.name} <span class="lv-ctl"><button class="lv-btn" data-d="-1" data-key="${key}">‹</button><b>L${lv}</b><button class="lv-btn" data-d="1" data-key="${key}">›</button></span>${dots}${!ok && mlock ? '<span class="r-lock">🔒</span>' : ''}</div>
