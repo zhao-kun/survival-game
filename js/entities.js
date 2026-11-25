@@ -3,7 +3,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL, ENEMY_CFG, enemyStats, pickJob } from './config.js';
-import { buildHumanoid, buildItemCube } from './models.js';
+import { buildHumanoid, buildItemCube, buildZombieJob } from './models.js';
 import { randRange, randInt, clamp } from './utils.js';
 
 const Z_HALF = 0.3, Z_HEIGHT = 1.8;
@@ -99,10 +99,9 @@ export class Zombie {
     this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
     this.headH = 1.45;   // M5 头部判定线
 
-    this.mesh = buildHumanoid({
-      skin: 0x4a9a4a, shirt: 0x2a6f6f, pants: 0x3a3a6a,
-      armsForward: true, facing: 1, scale: cfg.scale,
-    });
+    // E2：职业外观（性别体型/配色/标志物/手持）+ 大级基调（疯狂红眼/辐射荧光）
+    this.mesh = buildZombieJob(job, level, cfg.scale);
+    this.baseScale = this.mesh.scale.x;   // 职业体型基准（攻击闪缩放用）
     game.scene.add(this.mesh);
 
     // 血条（面向相机的简易条）
@@ -172,6 +171,13 @@ export class Zombie {
     const dx = p.x - this.pos.x, dz = p.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
+    // E2：辐射僵尸自体辐射雾（荧光绿粒子上升，0.5-0.9s 一缕）
+    this.fogT = (this.fogT ?? 0) - dt;
+    if (this.level >= 3 && this.fogT <= 0) {
+      this.fogT = 0.5 + Math.random() * 0.4;
+      spawnParticle(g, this.pos.x, this.pos.y + 1.2, this.pos.z, 0x66ff44, 0.8);
+    }
+
     // 受击闪光恢复
     if (this.flashT > 0) {
       this.flashT -= dt;
@@ -200,8 +206,9 @@ export class Zombie {
         else if (tr < 0.45) g.player.addEffect('concussion', 25);
         else if (tr < 0.55) g.player.addEffect('broken_arm', 40);
         // 扑击动画
-        this.mesh.scale.setScalar(this.cfg.scale * 1.12);
-        setTimeout(() => { if (!this.dead) this.mesh.scale.setScalar(this.cfg.scale); }, 120);
+        // E2：以职业体型基准（含女性 0.95/伐木 1.08 等）缩放，还原不覆盖体型
+        this.mesh.scale.setScalar(this.baseScale * 1.12);
+        setTimeout(() => { if (!this.dead) this.mesh.scale.setScalar(this.baseScale); }, 120);
       }
     } else {
       // 游荡
