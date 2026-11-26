@@ -475,7 +475,7 @@ export const ENEMY_CFG = {
     shoot:       { name: '军规点射', hook: 'tick',       range: [4, 10], windup: 0.8, mul: 0.8, interval: 1.5, burst: 3, tierMin: 3 },
   },
   // 精英变体（E5 实现，数据位预留）
-  ELITE: { chance: 0.05, hp: 1.5, scale: 1.2, prefix: '狂暴' },
+  ELITE: { chance: 0.05, hp: 1.5, scale: 1.2, prefix: '狂暴·' },
   // 夜晚重职业倾斜（权重 ×N 后重新归一化）
   NIGHT_BOOST: { lumberjack: 1.4, soldier: 1.4 },
 

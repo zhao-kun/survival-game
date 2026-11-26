@@ -198,7 +198,11 @@ export class Zombie {
     const cfg = enemyStats(level, job);   // 15 变体最终数值 = TIER 基准 × JOB 乘数
     this.cfg = cfg;
     this.armorPct = cfg.armorPct;         // 职业减伤（特种兵防弹插板）
-    this.elite = false;                   // E5 精英变体
+    // E5：精英变体 5%——体型 ×1.2 / hp ×1.5 / 名字「狂暴」前缀 / 掉落 ×2（数据读 ENEMY_CFG.ELITE）
+    this.elite = Math.random() < ENEMY_CFG.ELITE.chance;
+    if (this.elite) {
+      this.cfg = { ...cfg, name: `${ENEMY_CFG.ELITE.prefix}${cfg.name}` };
+    }
     // E3：职业技能状态（数值全读 ENEMY_CFG.SKILLS）
     this.skillCd = {};        // 各技能 cd 计时
     this.lastHurtT = 9;       // 脱战计时（战地急救 calm，出生视为脱战）
@@ -213,8 +217,8 @@ export class Zombie {
     this.shredT = 0;          // 破甲恢复倒计时
     this.windupRing = null;   // 蓄力红圈预警 mesh
     this.aimLine = null;      // 点射红色射线 mesh
-    this.hp = cfg.hp;
-    this.maxHp = cfg.hp;
+    this.hp = Math.round(cfg.hp * (this.elite ? ENEMY_CFG.ELITE.hp : 1));
+    this.maxHp = this.hp;
     this.pos = new THREE.Vector3(x, y, z);
     this.vel = new THREE.Vector3();
     this.onGround = false;
@@ -227,9 +231,10 @@ export class Zombie {
     this.bleedT = 0; this.bleedDps = 0; this.slowT = 0; this.crippleT = 0; this.dotTick = 0;   // M2 状态
     this.headH = 1.45;   // M5 头部判定线
 
-    // E2：职业外观（性别体型/配色/标志物/手持）+ 大级基调（疯狂红眼/辐射荧光）
-    this.mesh = buildZombieJob(job, level, cfg.scale);
+    // E2：职业外观（性别体型/配色/标志物/手持）+ 大级基调（疯狂红眼/辐射荧光）；E5：精英体型 ×1.2
+    this.mesh = buildZombieJob(job, level, cfg.scale * (this.elite ? ENEMY_CFG.ELITE.scale : 1));
     this.baseScale = this.mesh.scale.x;   // 职业体型基准（攻击闪缩放用）
+    if (this.elite) this.headH = 1.45 * ENEMY_CFG.ELITE.scale;   // 精英更高，头部判定线同步
     game.scene.add(this.mesh);
 
     // 血条（面向相机的简易条）
@@ -368,14 +373,15 @@ export class Zombie {
     for (const entry of ZOMBIE_LOOT) {
       if (Math.random() < entry.chance * dropMul) {
         const drop = entry.make(this.level);
-        if (drop) g.entities.spawnDrop(drop.id, drop.n, this.pos);
+        if (drop) g.entities.spawnDrop(drop.id, drop.n * (this.elite ? 2 : 1), this.pos);
       }
     }
-    // E4：职业专属掉落叠加判定（通用表之上，同格式同加成）
+    // E4：职业专属掉落叠加判定（通用表之上，同格式同加成）；E5：精英掉落数量 ×2（书/图纸不乘）
+    const lootMul = this.elite ? 2 : 1;
     for (const entry of (JOB_LOOT[this.job] ?? [])) {
       if (Math.random() < entry.chance * dropMul) {
         const drop = entry.make(this.level);
-        if (drop) g.entities.spawnDrop(drop.id, drop.n, this.pos);
+        if (drop) g.entities.spawnDrop(drop.id, drop.n * lootMul, this.pos);
       }
     }
     // 配方图纸：从尚未学会的图纸中随机掉一张（全学会后不掉）；E4：文员携带文件 ×1.5
