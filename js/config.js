@@ -208,6 +208,11 @@ export const EFFECTS = {
     hpDrain: 0.25,
     desc: '轻微持续掉血（绷带可治）',
   },
+  infection: {
+    name: '感染', icon: '🦠', color: '#8fbf4d', negative: true,
+    moveMul: 0.7,       // 移速乘子（fxMul 读取）
+    desc: '移速降低 30%（医生感染采样）',
+  },
   concussion: {
     name: '脑震荡', icon: '💫', color: '#c39bff', negative: true,
     moveMul: 0.8,       // 移速乘子（fxMul 读取）

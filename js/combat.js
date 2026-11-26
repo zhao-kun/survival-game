@@ -135,7 +135,7 @@ export class Combat {
     } else if (info.cls === 'club') {
       main.vel.y = Math.max(main.vel.y ?? 0, 3.5);   // 击飞
       if (Math.random() < 0.15 + 0.02 * lv + imH) {        // 爆头：总伤 ×3；M7 狩猎：概率 +6%
-        main.takeDamage(dmg * 2, null);
+        main.takeDamage(dmg * 2, null, { headshot: true });   // E3：headshot 标记 → 特种兵防弹插板 ×0.6
         g.ui.toast('💥 爆头！伤害 ×3', '#ffd54a');
         return true;
       }

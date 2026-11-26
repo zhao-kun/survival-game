@@ -75,16 +75,143 @@ function hpBarColor(e) {
 // ------------------------------------------------------------
 // 僵尸
 // ------------------------------------------------------------
+// ---------------- E3 职业技能实现（docs/ENEMIES-DESIGN.md 4.2） ----------------
+// 每个 fn(z, g, ctx) 返回 true 表示技能触发并进入 cd；数值全部读 ENEMY_CFG.SKILLS 元数据，
+// 新增职业/技能零侵入：JOB.skills 加键 + SKILLS 元数据 + 此处一个 fn 即可
+const SKILL_IMPL = {
+  // 📢 尖叫召集：受击惊动 12m 内同伴 + 自身攻速 +10%（可叠至 1.5）
+  scream(z, g) {
+    const s = ENEMY_CFG.SKILLS.scream;
+    let woke = 0;
+    for (const o of g.entities.zombies) {
+      if (o === z || o.dead) continue;
+      if (Math.hypot(o.pos.x - z.pos.x, o.pos.z - z.pos.z) < s.radius) { o.aggro = true; woke++; }
+    }
+    z.attackMul = Math.min(1.5, z.attackMul + 0.1);
+    spawnParticle(g, z.pos.x, z.pos.y + 2.0, z.pos.z, 0xffd54a, 0.6);
+    return true;
+  },
+  // 🍳 锅铲连击：20% 概率追击 60% 伤害
+  spatula(z, g, { target } = {}) {
+    const s = ENEMY_CFG.SKILLS.spatula;
+    if (!target || target.dead || Math.random() >= s.chance) return false;
+    target.damage(Math.round(z.attackDamage() * s.mul), 'zombie');
+    spawnParticle(g, z.pos.x, z.pos.y + 1.5, z.pos.z, 0xffcc88, 0.4);
+    return true;
+  },
+  // 💉 战地急救：脱战 calm 秒后自疗 8% maxHp
+  heal(z, g) {
+    const s = ENEMY_CFG.SKILLS.heal;
+    if (z.lastHurtT < s.calm || z.hp >= z.maxHp) return false;
+    z.hp = Math.min(z.maxHp, z.hp + Math.max(1, Math.round(z.maxHp * s.pct)));
+    spawnParticle(g, z.pos.x, z.pos.y + 1.6, z.pos.z, 0x7dd87d, 0.5);
+    return true;
+  },
+  // 🦠 感染采样：命中使玩家减速 30% 持续 slow 秒
+  infect(z, g, { target } = {}) {
+    if (!target || target.dead) return false;
+    target.addEffect('infection', ENEMY_CFG.SKILLS.infect.slow);
+    return true;
+  },
+  // 🤝 抱团士气：radius 内 ≥need 同伴 → 攻 +15%/速 +10%（tick 0.5s 刷新）
+  morale(z, g) {
+    const s = ENEMY_CFG.SKILLS.morale;
+    let n = 0;
+    for (const o of g.entities.zombies) {
+      if (o === z || o.dead) continue;
+      if (Math.hypot(o.pos.x - z.pos.x, o.pos.z - z.pos.z) < s.radius) n++;
+    }
+    z.moraleOn = n >= s.need;
+    return true;
+  },
+  // 🔨 破甲锤击：命中削玩家护甲 shred 点，叠至 cap 封顶，dur 秒后返还
+  armorbreak(z, g, { target } = {}) {
+    const s = ENEMY_CFG.SKILLS.armorbreak;
+    if (!target || target.dead) return false;
+    if (z.shredAmt >= s.cap) return false;   // 削甲叠满封顶，不再叠加
+    const amt = Math.min(s.shred, s.cap - z.shredAmt);
+    z.shredAmt += amt;
+    z.shredT = s.dur;
+    target.armor = (target.armor ?? 0) - amt;
+    spawnParticle(g, target.pos.x, target.pos.y + 1.2, target.pos.z, 0xaaaaaa, 0.4);
+    return true;
+  },
+  // 🤸 战术翻滚：被玩家瞄准（视线夹角<20°）且 dist>5m 时 30% 侧滚，短暂远程免疫
+  roll(z, g) {
+    const s = ENEMY_CFG.SKILLS.roll;
+    if (z.rollImmuneT > 0) return false;
+    const p = g.player.pos;
+    const dx = z.pos.x - p.x, dz = z.pos.z - p.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 5) return false;
+    const fwd = g.player.lookDir();
+    const fl = Math.hypot(fwd.x, fwd.z) || 1;
+    if ((fwd.x * dx + fwd.z * dz) / (fl * dist) < 0.94) return false;   // 未被瞄准
+    if (Math.random() >= s.chance) return false;
+    const perp = { x: -dz / dist, z: dx / dist };
+    const side = Math.random() < 0.5 ? 1 : -1;
+    g.world.moveEntity(z.pos, { x: perp.x * side * 9, y: 0, z: perp.z * side * 9 }, 0.18, Z_HALF, Z_HEIGHT);
+    z.rollImmuneT = 0.6;
+    spawnParticle(g, z.pos.x, z.pos.y + 0.4, z.pos.z, 0xdddddd, 0.4);
+    return true;
+  },
+  // 🔫 军规点射（仅辐射级）：4-10m 锁定 → 0.8s 红色射线预警 → 0.8×伤害点射；
+  // burst 发内连射（间隔 cd），burst 用尽 15s 后重装
+  shoot(z, g, { dt } = {}) {
+    const s = ENEMY_CFG.SKILLS.shoot;
+    if (z.tier < (s.tierMin ?? 3)) return false;
+    const p = g.player;
+    z.shotResetT = (z.shotResetT ?? 0) + dt;
+    if (z.shotResetT > 15) { z.shotResetT = 0; z.shotsLeft = s.burst; }
+    if (p.dead) { z.aimT = 0; z.hideAimLine(); return false; }
+    const dist = Math.hypot(p.pos.x - z.pos.x, p.pos.z - z.pos.z);
+    if (z.aimT > 0) {
+      z.aimT -= dt;
+      if (z.aimT <= 0) {
+        z.hideAimLine();
+        z.shotsLeft--;
+        if (dist < s.range[1] + 0.5 && Math.abs(p.pos.y - z.pos.y) < 2.5) {
+          p.damage(Math.round(z.attackDamage() * s.mul), 'zombie');
+          spawnParticle(g, p.pos.x, p.pos.y + 1.2, p.pos.z, 0xff5555, 0.4);
+        }
+        return true;
+      }
+      z.updateAimLine(p.pos);
+      return false;
+    }
+    if (z.shotsLeft > 0 && z.aggro && dist >= s.range[0] && dist <= s.range[1]) {
+      z.aimT = s.windup;
+      z.showAimLine();
+    }
+    return false;
+  },
+};
+
 export class Zombie {
   // E1：job 参数化 —— 缺省 'common' 全乘数 1.0，旧签名 new Zombie(g, level, x, y, z) 零破坏
   constructor(game, level, x, y, z, job = 'common') {
     this.game = game;
     this.level = level;          // 大级 tier：1 一般 / 2 疯狂 / 3 辐射
+    this.tier = level;           // E3：tier 别名（技能元数据 tierMin 判定用）
     this.job = job;
     const cfg = enemyStats(level, job);   // 15 变体最终数值 = TIER 基准 × JOB 乘数
     this.cfg = cfg;
     this.armorPct = cfg.armorPct;         // 职业减伤（特种兵防弹插板）
     this.elite = false;                   // E5 精英变体
+    // E3：职业技能状态（数值全读 ENEMY_CFG.SKILLS）
+    this.skillCd = {};        // 各技能 cd 计时
+    this.lastHurtT = 9;       // 脱战计时（战地急救 calm，出生视为脱战）
+    this.attackMul = 1;       // 尖叫召集攻速乘数
+    this.moraleOn = false;    // 抱团士气（攻 +15%/速 +10%）
+    this.rollImmuneT = 0;     // 战术翻滚远程免疫剩余
+    this.windupT = 0;         // 蓄力劈砍预警剩余
+    this.windupStunT = 0;     // 空劈硬直剩余
+    this.aimT = 0;            // 军规点射瞄准剩余
+    this.shotsLeft = 3;       // 点射剩余弹数
+    this.shredAmt = 0;        // 破甲累计削甲量
+    this.shredT = 0;          // 破甲恢复倒计时
+    this.windupRing = null;   // 蓄力红圈预警 mesh
+    this.aimLine = null;      // 点射红色射线 mesh
     this.hp = cfg.hp;
     this.maxHp = cfg.hp;
     this.pos = new THREE.Vector3(x, y, z);
@@ -122,10 +249,95 @@ export class Zombie {
   applyStatus(type, dur, dps = 0) { applyStatusImpl(this, type, dur, dps); }
   moveMul() { return moveMulImpl(this); }
 
+  // ---- E3 职业技能框架 ----
+  hasSkill(key) { return this.cfg.skills.includes(key); }
+
+  // 按 SKILLS 元数据的 hook 分发到 SKILL_IMPL；返回 true 的实现进入 cd（缺省 0.5s 供 tick 类刷新）
+  fireSkills(hook, ctx = {}) {
+    for (const key of this.cfg.skills) {
+      const meta = ENEMY_CFG.SKILLS[key];
+      if (!meta || meta.hook !== hook) continue;
+      if ((this.skillCd[key] ?? 0) > 0) continue;
+      const fn = SKILL_IMPL[key];
+      if (fn && fn(this, this.game, ctx)) this.skillCd[key] = meta.cd ?? meta.interval ?? 0.5;
+    }
+  }
+
+  // 攻击力：士气加成（🤝 抱团 +15%）
+  attackDamage() { return Math.round(this.cfg.damage * (this.moraleOn ? ENEMY_CFG.SKILLS.morale.dmg : 1)); }
+  // 攻击间隔：尖叫召集攻速乘数
+  attackInterval() { return 1.2 / (this.attackMul ?? 1); }
+
+  // 扑击动画（原攻击段内联逻辑提取，蓄力结算复用）
+  pounce() {
+    this.mesh.scale.setScalar(this.baseScale * 1.12);
+    setTimeout(() => { if (!this.dead) this.mesh.scale.setScalar(this.baseScale); }, 120);
+  }
+
+  // ⚠️ 蓄力红圈预警（地面）
+  showWindupRing() {
+    const geo = new THREE.RingGeometry(0.7, 1.0, 24);
+    this.windupRing = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+    this.windupRing.rotation.x = -Math.PI / 2;
+    this.windupRing.position.set(this.pos.x, this.pos.y + 0.06, this.pos.z);
+    this.game.scene.add(this.windupRing);
+  }
+  hideWindupRing() {
+    if (this.windupRing) {
+      this.game.scene.remove(this.windupRing);
+      this.windupRing.geometry.dispose(); this.windupRing.material.dispose();
+      this.windupRing = null;
+    }
+  }
+
+  // 🔫 点射红色射线预警（枪口 → 玩家胸口）
+  showAimLine() {
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    this.aimLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.85 }));
+    this.aimLine.frustumCulled = false;
+    this.game.scene.add(this.aimLine);
+    this.updateAimLine(this.game.player.pos);
+  }
+  updateAimLine(targetPos) {
+    if (!this.aimLine) return;
+    this.aimLine.geometry.setFromPoints([
+      new THREE.Vector3(this.pos.x, this.pos.y + 1.3, this.pos.z),
+      new THREE.Vector3(targetPos.x, targetPos.y + 1.2, targetPos.z),
+    ]);
+  }
+  hideAimLine() {
+    if (this.aimLine) {
+      this.game.scene.remove(this.aimLine);
+      this.aimLine.geometry.dispose(); this.aimLine.material.dispose();
+      this.aimLine = null;
+    }
+  }
+
   takeDamage(dmg, knockDir, opts = null) {
     if (this.dead) return;
+    const g = this.game;
+    // 🤸 战术翻滚：远程免疫中，本次伤害无效
+    if (opts?.ranged && this.rollImmuneT > 0) {
+      spawnParticle(g, this.pos.x, this.pos.y + 1.4, this.pos.z, 0xdddddd, 0.3);
+      if (!opts.noAggro) this.aggro = true;
+      return;
+    }
+    // 🛡 防弹插板：爆头伤害 ×0.6
+    if (opts?.headshot && this.hasSkill('plate')) dmg *= ENEMY_CFG.SKILLS.plate.headMul;
+    // 🏃 胆小侧闪：受击 25% 侧向闪避位移（cd 2s），免疫本次伤害
+    if (this.hasSkill('dodge') && (this.skillCd.dodge ?? 0) <= 0 && Math.random() < ENEMY_CFG.SKILLS.dodge.chance) {
+      this.skillCd.dodge = ENEMY_CFG.SKILLS.dodge.cd;
+      const kd = knockDir ?? { x: 0, z: 1 };
+      const perp = { x: -kd.z, z: kd.x };
+      const side = Math.random() < 0.5 ? 1 : -1;
+      g.world.moveEntity(this.pos, { x: perp.x * side * 9, y: 0, z: perp.z * side * 9 }, 0.18, Z_HALF, Z_HEIGHT);
+      spawnParticle(g, this.pos.x, this.pos.y + 1.4, this.pos.z, 0xffffff, 0.35);
+      if (!opts?.noAggro) this.aggro = true;
+      return;
+    }
     // E1：职业减伤入口（armorPct，最低承伤 1）
     this.hp -= Math.max(1, Math.round(dmg * (1 - this.armorPct)));
+    this.lastHurtT = 0;   // 💉 脱战计时清零
     if (!opts?.noAggro) this.aggro = true;   // M5 隐蔽：弓 12m 外不惊动
     this.flashT = 0.15;
     this.game.sfx?.hit();   // 受击音效
@@ -136,11 +348,14 @@ export class Zombie {
       this.vel.y += 2;
     }
     this.hpBar.visible = true;
-    if (this.hp <= 0) this.die();
+    if (this.hp <= 0) { this.hideWindupRing(); this.hideAimLine(); this.die(); return; }
+    this.fireSkills('onDamaged');   // 📢 尖叫召集
   }
 
   die() {
     this.dead = true;
+    this.hideWindupRing();   // E3：清理蓄力红圈/点射射线
+    this.hideAimLine();
     const g = this.game;
     g.player.addXp(this.cfg.xp);
     g.stats.kills++;
@@ -178,6 +393,38 @@ export class Zombie {
       spawnParticle(g, this.pos.x, this.pos.y + 1.2, this.pos.z, 0x66ff44, 0.8);
     }
 
+    // E3：技能 cd 衰减 + tick/aimed 钩子 + 状态衰减
+    for (const k in this.skillCd) this.skillCd[k] = Math.max(0, this.skillCd[k] - dt);
+    this.lastHurtT += dt;
+    this.rollImmuneT = Math.max(0, this.rollImmuneT - dt);
+    this.windupStunT = Math.max(0, this.windupStunT - dt);
+    this.fireSkills('tick', { dt });   // 💉战地急救/🤝抱团士气/🔫军规点射
+    this.fireSkills('aimed');          // 🤸战术翻滚
+
+    // 🔨 破甲恢复：削甲持续结束返还护甲
+    if (this.shredT > 0) {
+      this.shredT -= dt;
+      if (this.shredT <= 0) { g.player.armor += this.shredAmt; this.shredAmt = 0; }
+    }
+
+    // ⚠️ 蓄力劈砍状态机：预警期红圈跟踪脚底，结束后 2m 内结算 ×1.6 伤，走出则空劈硬直
+    if (this.windupT > 0) {
+      this.windupT -= dt;
+      if (this.windupRing) this.windupRing.position.set(this.pos.x, this.pos.y + 0.06, this.pos.z);
+      if (this.windupT <= 0) {
+        this.hideWindupRing();
+        for (const m of this.materials()) m.emissive.setHex(0x000000);
+        this.attackCd = this.attackInterval();
+        const d2 = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
+        if (d2 < 2.0 && Math.abs(p.y - this.pos.y) < 2 && !g.player.dead) {
+          g.player.damage(Math.round(this.attackDamage() * ENEMY_CFG.SKILLS.windup.mul), 'zombie');
+          this.pounce();
+        } else {
+          this.windupStunT = ENEMY_CFG.SKILLS.windup.punish;
+        }
+      }
+    }
+
     // 受击闪光恢复
     if (this.flashT > 0) {
       this.flashT -= dt;
@@ -194,21 +441,30 @@ export class Zombie {
       // 进入攻击距离后停下（避免冲过头来回穿越玩家）
       const stop = dist < 1.4;
       const mm = this.moveMul();   // M2：震慑 ×0.5 / 致残 ×0.6
-      this.vel.x = stop ? 0 : moveX * this.cfg.speed * mm;
-      this.vel.z = stop ? 0 : moveZ * this.cfg.speed * mm;
+      const spd = this.cfg.speed * (this.moraleOn ? ENEMY_CFG.SKILLS.morale.spd : 1);   // 🤝 抱团士气加速
+      const stun = this.windupStunT > 0 ? 0 : 1;   // ⚠️ 空劈硬直不移动
+      this.vel.x = (stop ? 0 : moveX * spd * mm) * stun;
+      this.vel.z = (stop ? 0 : moveZ * spd * mm) * stun;
       // 攻击
-      if (dist < 1.8 && Math.abs(p.y - this.pos.y) < 2 && this.attackCd <= 0) {
-        this.attackCd = 1.2;
-        g.player.damage(this.cfg.damage, 'zombie');
-        // 僵尸攻击可能造成创伤：擦伤 30% / 脑震荡 15% / 断手 10%
-        const tr = Math.random();
-        if (tr < 0.30) g.player.addEffect('scrape', 30);
-        else if (tr < 0.45) g.player.addEffect('concussion', 25);
-        else if (tr < 0.55) g.player.addEffect('broken_arm', 40);
-        // 扑击动画
-        // E2：以职业体型基准（含女性 0.95/伐木 1.08 等）缩放，还原不覆盖体型
-        this.mesh.scale.setScalar(this.baseScale * 1.12);
-        setTimeout(() => { if (!this.dead) this.mesh.scale.setScalar(this.baseScale); }, 120);
+      if (dist < 1.8 && Math.abs(p.y - this.pos.y) < 2 && this.attackCd <= 0 && this.windupT <= 0 && this.windupStunT <= 0) {
+        if (this.hasSkill('windup')) {
+          // ⚠️ 蓄力劈砍：泛黄 + 红圈预警，0.6s 后由 update 状态机结算
+          this.windupT = ENEMY_CFG.SKILLS.windup.t;
+          this.showWindupRing();
+          for (const m of this.materials()) m.emissive.setHex(0xccaa00);
+        } else {
+          this.attackCd = this.attackInterval();
+          g.player.damage(this.attackDamage(), 'zombie');
+          // 僵尸攻击可能造成创伤：擦伤 30% / 脑震荡 15% / 断手 10%
+          const tr = Math.random();
+          if (tr < 0.30) g.player.addEffect('scrape', 30);
+          else if (tr < 0.45) g.player.addEffect('concussion', 25);
+          else if (tr < 0.55) g.player.addEffect('broken_arm', 40);
+          // 扑击动画（E2：以职业体型基准缩放，还原不覆盖体型）
+          this.pounce();
+          // E3：命中钩子（🍳锅铲连击/🦠感染采样/🔨破甲锤击）
+          this.fireSkills('onAttackHit', { target: g.player });
+        }
       }
     } else {
       // 游荡
@@ -545,7 +801,8 @@ export class Projectile {
         // M5 隐蔽：弓且 12m 外 → 不因这次攻击进入 aggro（潜行狙击）
         const dist = e.pos.distanceTo(g.player.pos);
         const noAggro = this.wcls === 'bow' && dist > 12;
-        e.takeDamage(dmg, this.vel.clone().normalize(), { noAggro });
+        // E3：ranged → 战术翻滚免疫可拦截；headshot → 防弹插板减爆头
+        e.takeDamage(dmg, this.vel.clone().normalize(), { noAggro, ranged: true, headshot: head });
         g.ui.toast(head ? `🎯 爆头！-${Math.round(dmg)}`
           : noAggro ? `🏹 隐蔽狙击 -${Math.round(dmg)}`
           : crit ? `🎯 暴击！-${Math.round(dmg)}` : `-${Math.round(dmg)}`,

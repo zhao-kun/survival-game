@@ -132,7 +132,7 @@
 |---|---|---|---|
 | **E1** | 数据层：ENEMY_CFG（TIER 3 档沿用 LEVELS + JOBS 5 职业乘数/技能/掉落/权重表 15 变体）；Zombie 类 job 参数化（缺省 common=全乘数 1.0，历史签名 `new Zombie(g, level, x, y, z)` 零破坏）；zombieBudget job 权重与天数门槛 | enemy-data.mjs：15 变体数值=基准×乘数；旧签名兼容；权重和=1、门槛正确 | ✅ 已完成（11/11 两连过：JOBS/技能声明/15 变体数值/旧签名/职业实例/减伤入口/pickJob 门槛归一化夜晚倾斜/spawnZombie 自动抽职业） |
 | **E2** | 外观：buildZombieJob(job, tier) —— 性别体型/长发/裙装、职业配色+标志物（围裙/红十字/领带眼镜/斧/头盔背心/枪）、大级基调（疯狂红眼/辐射荧光+雾粒子） | enemy-model.mjs：5 职业子件数基线与配色断言；3 大级皮肤/发光断言；手持道具 | ✅ 已完成（12/12 两连过：TIER_SKIN/EYE 基调、职业 tag/配色/体型、手持道具、实例整合+baseScale 攻击闪不覆盖体型、辐射雾粒子、buildHumanoid 兼容） |
-| **E3** | 职业技能 AI：事件钩子框架（onDamaged/onWindup/onSpotted/onAttackHit）+ 11 项技能实现（尖叫召集/锅铲连击/战地急救/感染采样/胆小侧闪/抱团士气/蓄力劈砍+硬直/破甲锤击/防弹插板/战术翻滚/军规点射） | enemy-ai.mjs：每技能独立断言（概率项用 Math.random 固定）；cd/免疫窗口 | ⬜ 未开始 |
+| **E3** | 职业技能 AI：事件钩子框架（onDamaged/onWindup/onSpotted/onAttackHit）+ 11 项技能实现（尖叫召集/锅铲连击/战地急救/感染采样/胆小侧闪/抱团士气/蓄力劈砍+硬直/破甲锤击/防弹插板/战术翻滚/军规点射） | enemy-ai.mjs：每技能独立断言（概率项用 Math.random 固定）；cd/免疫窗口 | ✅ 已完成（13/13 两连过：fireSkills 钩子分发 + 11 技能全实现；蓄力红圈/点射射线预警；plate 爆头×0.6 与 roll 远程免疫接入 takeDamage/combat opts；die 清理） |
 | **E4** | 掉落：职业专属表叠加判定（医生医疗品/伐木工木铁/特种兵弩箭铁锭插件/文员图纸×1.5/妇女布料食物）；死亡 toast 职业名 | enemy-loot.mjs：固定随机逐条断言；通用表不回归 | ⬜ 未开始 |
 | **E5** | 生成规则：spawner 接 job 权重（权重和、天数门槛、夜晚倾斜 ×1.4）；精英变体（5%：体型/hp/名字/掉落×2） | enemy-spawn.mjs：预算函数单测+定点生成断言；精英概率固定随机 | ⬜ 未开始 |
 | **E6** | HUD/图鉴：名字+职业 emoji+大级色血条、技能状态图标（💪⚠️🔫🛡）、蓄力红圈/射线预警、击杀图鉴 15 格 | enemy-hud.mjs：标签内容/颜色/图标断言；图鉴计数 | ⬜ 未开始 |
