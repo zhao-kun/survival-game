@@ -447,6 +447,9 @@ export const ZOMBIE_LOOT = [
 // ---------- 敌人系统 v2：三大级 × 五职业（docs/ENEMIES-DESIGN.md E1） ----------
 // 大级 TIER = ZOMBIE_CFG.LEVELS（一般1/疯狂2/辐射3，攻防血速全面递增）；
 // 职业 JOB = 乘数 + 专属技能 + 掉落 + 权重，15 变体 = TIER 基准 × JOB 乘数
+// E4：mod 插件 id 池（soldier 掉落随机抽取用）
+const PLUGIN_IDS = Object.keys(ITEMS).filter(k => ITEMS[k].kind === 'plugin');
+
 export const ENEMY_CFG = {
   JOBS: {
     // common：兼容缺省（旧签名 new Zombie(g, level, x, y, z)），全乘数 1.0 不生成不参与权重
@@ -475,7 +478,35 @@ export const ENEMY_CFG = {
   ELITE: { chance: 0.05, hp: 1.5, scale: 1.2, prefix: '狂暴' },
   // 夜晚重职业倾斜（权重 ×N 后重新归一化）
   NIGHT_BOOST: { lumberjack: 1.4, soldier: 1.4 },
+
+  // E4 职业专属掉落表：与通用 ZOMBIE_LOOT 叠加判定（格式同：{chance, make(lvl)}，受拾荒 dropMul 加成）
+  JOB_LOOT: {
+    housewife: [
+      { chance: 0.40, make: () => ({ id: 'cloth', n: 2 + Math.floor(Math.random() * 2) }) },   // 布料 ×2-3
+      { chance: 0.30, make: () => (Math.random() < 0.5 ? { id: 'berry', n: 1 + Math.floor(Math.random() * 2) } : { id: 'cooked_meat', n: 1 }) },   // 浆果/熟食（设计稿“罐头”无对应物品，用熟食）
+    ],
+    doctor: [
+      { chance: 0.50, make: () => ({ id: 'bandage', n: 1 }) },   // 绷带：医疗物资主来源
+      { chance: 0.25, make: () => ({ id: 'medkit', n: 1 }) },    // 医疗包
+    ],
+    clerk: [
+      { chance: 1.00, make: () => ({ id: 'bone', n: 2 }) },   // 骨头 ×2 必带（携带文件时的零碎）
+    ],
+    lumberjack: [
+      { chance: 0.60, make: () => ({ id: 'log', n: 2 + Math.floor(Math.random() * 3) }) },   // 原木 ×2-4
+      { chance: 0.25, make: () => ({ id: 'iron_ore', n: 1 }) },   // 铁矿石：工具链补给
+    ],
+    soldier: [
+      { chance: 0.45, make: () => ({ id: 'bolt', n: 2 + Math.floor(Math.random() * 2) }) },   // 弩箭 ×2-3
+      { chance: 0.20, make: () => ({ id: 'iron_ingot', n: 1 }) },   // 铁锭
+      // mod 插件：基准 0.10 ×1.5 = 0.15，随机一种插件（设计稿“mod 插件概率 ×1.5”）
+      { chance: 0.15, make: () => ({ id: PLUGIN_IDS[Math.floor(Math.random() * PLUGIN_IDS.length)], n: 1 }) },
+    ],
+  },
 };
+
+// E4 大级名前缀（死亡 toast/HUD 名牌用；一般无前缀）
+export const TIER_PREFIX = { 1: '', 2: '疯狂·', 3: '辐射·' };
 
 // 变体最终数值：TIER 基准 × JOB 乘数（hp/dmg/xp 取整，speed 保留 2 位）
 export function enemyStats(tier, job = 'common') {

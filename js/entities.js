@@ -2,7 +2,8 @@
 // entities.js —— 僵尸 / 动物 / 掉落物 / 箭矢 / 实体管理器
 // ============================================================
 import * as THREE from 'three';
-import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL, ENEMY_CFG, enemyStats, pickJob } from './config.js';
+import { ZOMBIE_CFG, ANIMAL_CFG, ZOMBIE_LOOT, PLAN_DROP_CHANCE, ITEMS, GAMEPLAY, WORLD, zombieBudget, BOOKS, HEADSHOT_MUL, ENEMY_CFG, enemyStats, pickJob, TIER_PREFIX } from './config.js';
+const JOB_LOOT = ENEMY_CFG.JOB_LOOT;   // E4 职业专属掉落表
 import { buildHumanoid, buildItemCube, buildZombieJob } from './models.js';
 import { randRange, randInt, clamp } from './utils.js';
 
@@ -359,9 +360,10 @@ export class Zombie {
     const g = this.game;
     g.player.addXp(this.cfg.xp);
     g.stats.kills++;
-    g.ui.toast(`击杀 Lv.${this.level} 僵尸 +${this.cfg.xp} XP`, '#ffd54a');
+    // E4：死亡 toast 带大级前缀与职业名（「击杀 疯狂·伐木工 +58 XP」）
+    g.ui.toast(`击杀 ${TIER_PREFIX[this.level] ?? ''}${this.cfg.name} +${this.cfg.xp} XP`, '#ffd54a');
     dropBook(g, this.pos, 0.07);   // M3：僵尸 7% 掉技能书
-    // 掉落判定
+    // 掉落判定：通用表
     const dropMul = (g.player.mods ?? g.skills.mods).dropMul;
     for (const entry of ZOMBIE_LOOT) {
       if (Math.random() < entry.chance * dropMul) {
@@ -369,8 +371,15 @@ export class Zombie {
         if (drop) g.entities.spawnDrop(drop.id, drop.n, this.pos);
       }
     }
-    // 配方图纸：从尚未学会的图纸中随机掉一张（全学会后不掉）
-    if (Math.random() < PLAN_DROP_CHANCE * dropMul) {
+    // E4：职业专属掉落叠加判定（通用表之上，同格式同加成）
+    for (const entry of (JOB_LOOT[this.job] ?? [])) {
+      if (Math.random() < entry.chance * dropMul) {
+        const drop = entry.make(this.level);
+        if (drop) g.entities.spawnDrop(drop.id, drop.n, this.pos);
+      }
+    }
+    // 配方图纸：从尚未学会的图纸中随机掉一张（全学会后不掉）；E4：文员携带文件 ×1.5
+    if (Math.random() < PLAN_DROP_CHANCE * (this.job === 'clerk' ? 1.5 : 1) * dropMul) {
       const pool = Object.entries(ITEMS).filter(([, d]) => d.kind === 'plan' && !(g.unlocked instanceof Set && g.unlocked.has(d.learn)));
       if (pool.length) {
         const [id] = pool[Math.floor(Math.random() * pool.length)];
